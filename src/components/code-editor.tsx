@@ -6,8 +6,8 @@ loader.config({
 });
 
 export function CodeEditor({
-  value, language = "typescript", height = "100%", readOnly = false,
-}: { value: string; language?: string; height?: string | number; readOnly?: boolean }) {
+  value, language = "typescript", height = "100%", readOnly = false, onChange,
+}: { value: string; language?: string; height?: string | number; readOnly?: boolean; onChange?: (value: string) => void }) {
   useEffect(() => {
     loader.init().then((monaco) => {
       monaco.editor.defineTheme("devreview-dark", {
