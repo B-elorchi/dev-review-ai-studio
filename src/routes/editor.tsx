@@ -457,7 +457,7 @@ function EditorPage() {
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Composer */}
             <div className="border-t border-border/60 p-2">
