@@ -120,9 +120,6 @@ function findFile(path: string): FileNode | undefined {
   return allFiles.find((f) => f.path === path)?.node;
 }
 
-function EditorPage() {
-  const [openTabs, setOpenTabs] = useState<string[]>(["src/App.tsx", "src/components/Button.tsx", "package.json"]);
-  const [active, setActive] = useState("src/App.tsx");
 function extractLastCodeBlock(text: string): { lang?: string; code: string } | null {
   const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
