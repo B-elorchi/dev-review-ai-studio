@@ -88,6 +88,18 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const path = useRouterState({ select: (r) => r.location.pathname });
+  const isFullScreen = path === "/auth" || path === "/onboarding";
+
+  if (isFullScreen) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+        <Toaster />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
