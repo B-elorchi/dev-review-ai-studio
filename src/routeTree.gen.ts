@@ -9,20 +9,39 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as TelegramRouteImport } from './routes/telegram'
+import { Route as TeamRouteImport } from './routes/team'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as PullRequestsRouteImport } from './routes/pull-requests'
 import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as GithubRouteImport } from './routes/github'
 import { Route as DevopsRouteImport } from './routes/devops'
 import { Route as CodeReviewRouteImport } from './routes/code-review'
+import { Route as BillingRouteImport } from './routes/billing'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuditLogRouteImport } from './routes/audit-log'
+import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
 
+const TemplatesRoute = TemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TelegramRoute = TelegramRouteImport.update({
   id: '/telegram',
   path: '/telegram',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeamRoute = TeamRouteImport.update({
+  id: '/team',
+  path: '/team',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -35,9 +54,24 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PullRequestsRoute = PullRequestsRouteImport.update({
+  id: '/pull-requests',
+  path: '/pull-requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GithubRoute = GithubRouteImport.update({
@@ -53,6 +87,26 @@ const DevopsRoute = DevopsRouteImport.update({
 const CodeReviewRoute = CodeReviewRouteImport.update({
   id: '/code-review',
   path: '/code-review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingRoute = BillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditLogRoute = AuditLogRouteImport.update({
+  id: '/audit-log',
+  path: '/audit-log',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiKeysRoute = ApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsRoute = AgentsRouteImport.update({
@@ -74,38 +128,65 @@ const ProjectsIdRoute = ProjectsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/audit-log': typeof AuditLogRoute
+  '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/github': typeof GithubRoute
+  '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRouteWithChildren
+  '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
+  '/templates': typeof TemplatesRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/audit-log': typeof AuditLogRoute
+  '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/github': typeof GithubRoute
+  '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRouteWithChildren
+  '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
+  '/templates': typeof TemplatesRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
+  '/api-keys': typeof ApiKeysRoute
+  '/audit-log': typeof AuditLogRoute
+  '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/github': typeof GithubRoute
+  '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRouteWithChildren
+  '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
+  '/templates': typeof TemplatesRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRouteTypes {
@@ -113,59 +194,109 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agents'
+    | '/api-keys'
+    | '/audit-log'
+    | '/auth'
+    | '/billing'
     | '/code-review'
     | '/devops'
     | '/github'
+    | '/notifications'
+    | '/onboarding'
     | '/projects'
+    | '/pull-requests'
     | '/reports'
     | '/settings'
+    | '/team'
     | '/telegram'
+    | '/templates'
     | '/projects/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/agents'
+    | '/api-keys'
+    | '/audit-log'
+    | '/auth'
+    | '/billing'
     | '/code-review'
     | '/devops'
     | '/github'
+    | '/notifications'
+    | '/onboarding'
     | '/projects'
+    | '/pull-requests'
     | '/reports'
     | '/settings'
+    | '/team'
     | '/telegram'
+    | '/templates'
     | '/projects/$id'
   id:
     | '__root__'
     | '/'
     | '/agents'
+    | '/api-keys'
+    | '/audit-log'
+    | '/auth'
+    | '/billing'
     | '/code-review'
     | '/devops'
     | '/github'
+    | '/notifications'
+    | '/onboarding'
     | '/projects'
+    | '/pull-requests'
     | '/reports'
     | '/settings'
+    | '/team'
     | '/telegram'
+    | '/templates'
     | '/projects/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsRoute: typeof AgentsRoute
+  ApiKeysRoute: typeof ApiKeysRoute
+  AuditLogRoute: typeof AuditLogRoute
+  AuthRoute: typeof AuthRoute
+  BillingRoute: typeof BillingRoute
   CodeReviewRoute: typeof CodeReviewRoute
   DevopsRoute: typeof DevopsRoute
   GithubRoute: typeof GithubRoute
+  NotificationsRoute: typeof NotificationsRoute
+  OnboardingRoute: typeof OnboardingRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
+  PullRequestsRoute: typeof PullRequestsRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
+  TeamRoute: typeof TeamRoute
   TelegramRoute: typeof TelegramRoute
+  TemplatesRoute: typeof TemplatesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/templates': {
+      id: '/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof TemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/telegram': {
       id: '/telegram'
       path: '/telegram'
       fullPath: '/telegram'
       preLoaderRoute: typeof TelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/team': {
+      id: '/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof TeamRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -182,11 +313,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pull-requests': {
+      id: '/pull-requests'
+      path: '/pull-requests'
+      fullPath: '/pull-requests'
+      preLoaderRoute: typeof PullRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects': {
       id: '/projects'
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/github': {
@@ -208,6 +360,34 @@ declare module '@tanstack/react-router' {
       path: '/code-review'
       fullPath: '/code-review'
       preLoaderRoute: typeof CodeReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit-log': {
+      id: '/audit-log'
+      path: '/audit-log'
+      fullPath: '/audit-log'
+      preLoaderRoute: typeof AuditLogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-keys': {
+      id: '/api-keys'
+      path: '/api-keys'
+      fullPath: '/api-keys'
+      preLoaderRoute: typeof ApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents': {
@@ -249,14 +429,33 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRoute,
+  ApiKeysRoute: ApiKeysRoute,
+  AuditLogRoute: AuditLogRoute,
+  AuthRoute: AuthRoute,
+  BillingRoute: BillingRoute,
   CodeReviewRoute: CodeReviewRoute,
   DevopsRoute: DevopsRoute,
   GithubRoute: GithubRoute,
+  NotificationsRoute: NotificationsRoute,
+  OnboardingRoute: OnboardingRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
+  PullRequestsRoute: PullRequestsRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
+  TeamRoute: TeamRoute,
   TelegramRoute: TelegramRoute,
+  TemplatesRoute: TemplatesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
