@@ -29,6 +29,7 @@ import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
+import { Route as ApiEditorChatRouteImport } from './routes/api/editor-chat'
 
 const TemplatesRoute = TemplatesRouteImport.update({
   id: '/templates',
@@ -130,6 +131,11 @@ const ProjectsIdRoute = ProjectsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const ApiEditorChatRoute = ApiEditorChatRouteImport.update({
+  id: '/api/editor-chat',
+  path: '/api/editor-chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRoutesByTo {
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRoutesById {
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRouteTypes {
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/api/editor-chat'
     | '/projects/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/api/editor-chat'
     | '/projects/$id'
   id:
     | '__root__'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/api/editor-chat'
     | '/projects/$id'
   fileRoutesById: FileRoutesById
 }
@@ -287,6 +299,7 @@ export interface RootRouteChildren {
   TeamRoute: typeof TeamRoute
   TelegramRoute: typeof TelegramRoute
   TemplatesRoute: typeof TemplatesRoute
+  ApiEditorChatRoute: typeof ApiEditorChatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -431,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsIdRouteImport
       parentRoute: typeof ProjectsRoute
     }
+    '/api/editor-chat': {
+      id: '/api/editor-chat'
+      path: '/api/editor-chat'
+      fullPath: '/api/editor-chat'
+      preLoaderRoute: typeof ApiEditorChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -466,6 +486,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeamRoute: TeamRoute,
   TelegramRoute: TelegramRoute,
   TemplatesRoute: TemplatesRoute,
+  ApiEditorChatRoute: ApiEditorChatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

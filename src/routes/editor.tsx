@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import ReactMarkdown from "react-markdown";
 import {
-  Bot, ChevronRight, File, FileCode, FilePlus, Folder, FolderOpen, GitBranch,
-  Play, Save, Search, Send, Settings as SettingsIcon, Sparkles, Terminal as TerminalIcon,
-  X, Circle, ChevronDown, Wand2, Command,
+  Bot, Check, ChevronRight, File, FileCode, FilePlus, Folder, FolderOpen, GitBranch,
+  Loader2, Play, Save, Search, Send, Settings as SettingsIcon, Sparkles, Square,
+  Terminal as TerminalIcon, X, Circle, ChevronDown, Wand2, Command,
 } from "lucide-react";
 import { CodeEditor } from "@/components/code-editor";
 import { Button } from "@/components/ui/button";
@@ -13,6 +16,7 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/editor")({
   ssr: false,
@@ -116,15 +120,65 @@ function findFile(path: string): FileNode | undefined {
   return allFiles.find((f) => f.path === path)?.node;
 }
 
+function extractLastCodeBlock(text: string): { lang?: string; code: string } | null {
+  const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  let last: { lang?: string; code: string } | null = null;
+  while ((m = re.exec(text)) !== null) {
+    last = { lang: m[1] || undefined, code: m[2] };
+  }
+  return last;
+}
+
 function EditorPage() {
   const [openTabs, setOpenTabs] = useState<string[]>(["src/App.tsx", "src/components/Button.tsx", "package.json"]);
   const [active, setActive] = useState("src/App.tsx");
-  const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "Hi! I'm your AI pair-programmer. Ask me to refactor, explain, or generate code from the current file." },
-  ]);
+  // Per-path overridden contents (so AI edits + manual edits persist)
+  const [contents, setContents] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const f of allFiles) init[f.path] = f.node.content ?? "";
+    return init;
+  });
   const [input, setInput] = useState("");
+  const [appliedIds, setAppliedIds] = useState<Record<string, boolean>>({});
 
   const activeFile = findFile(active);
+  const activeContent = contents[active] ?? activeFile?.content ?? "";
+  const activeLang = activeFile?.lang ?? "plaintext";
+
+  // Keep a ref so transport prepareSendMessagesRequest always sees latest context
+  const ctxRef = useRef({ active, activeContent, activeLang });
+  useEffect(() => {
+    ctxRef.current = { active, activeContent, activeLang };
+  }, [active, activeContent, activeLang]);
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/editor-chat",
+        prepareSendMessagesRequest: ({ messages, body }) => ({
+          body: {
+            ...body,
+            messages,
+            fileName: ctxRef.current.active,
+            fileLang: ctxRef.current.activeLang,
+            fileContent: ctxRef.current.activeContent,
+          },
+        }),
+      }),
+    [],
+  );
+
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport,
+    onError: (e) => toast.error(e.message || "AI request failed"),
+  });
+
+  const isLoading = status === "submitted" || status === "streaming";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, isLoading]);
 
   const openFile = (path: string) => {
     if (!openTabs.includes(path)) setOpenTabs([...openTabs, path]);
@@ -135,15 +189,24 @@ function EditorPage() {
     setOpenTabs(next);
     if (active === path && next.length) setActive(next[next.length - 1]);
   };
-  const send = () => {
-    if (!input.trim()) return;
-    setChat([
-      ...chat,
-      { role: "user", text: input },
-      { role: "ai", text: `Analyzing \`${active.split("/").pop()}\` and proposing changes…` },
-    ]);
+  const send = (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || isLoading) return;
+    sendMessage({ text });
     setInput("");
   };
+  const applyCode = (msgId: string, code: string) => {
+    setContents((c) => ({ ...c, [active]: code }));
+    setAppliedIds((s) => ({ ...s, [msgId]: true }));
+    toast.success(`Applied changes to ${active.split("/").pop()}`);
+  };
+
+  const quickActions: { label: string; icon: typeof Bot; prompt: string }[] = [
+    { label: "Explain", icon: Bot, prompt: "Explain what this file does, its structure, and any non-obvious behavior. Do not modify the code." },
+    { label: "Refactor", icon: Wand2, prompt: "Refactor this file for readability and maintainability. Return the full updated file." },
+    { label: "Fix bugs", icon: Circle, prompt: "Find and fix any bugs or potential issues in this file. Return the full updated file." },
+    { label: "Add tests", icon: FileCode, prompt: "Add tests for this file. If the file itself is the code, write a test file's full contents instead." },
+  ];
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-[#0a0d18]">
@@ -243,7 +306,11 @@ function EditorPage() {
                 {/* Monaco */}
                 <div className="flex-1 min-h-0">
                   {activeFile ? (
-                    <CodeEditor value={activeFile.content ?? ""} language={activeFile.lang ?? "plaintext"} />
+                    <CodeEditor
+                      value={activeContent}
+                      language={activeLang}
+                      onChange={(v) => setContents((c) => ({ ...c, [active]: v }))}
+                    />
                   ) : (
                     <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Select a file to start editing</div>
                   )}
@@ -314,38 +381,87 @@ function EditorPage() {
 
             {/* Quick actions */}
             <div className="grid grid-cols-2 gap-1.5 border-b border-border/60 p-2">
-              {[
-                { label: "Explain", icon: Bot }, { label: "Refactor", icon: Wand2 },
-                { label: "Fix bugs", icon: Circle }, { label: "Add tests", icon: FileCode },
-              ].map((q) => (
-                <Button key={q.label} variant="outline" size="sm" className="h-7 justify-start gap-1.5 text-[11px]">
+              {quickActions.map((q) => (
+                <Button
+                  key={q.label}
+                  variant="outline"
+                  size="sm"
+                  disabled={isLoading}
+                  onClick={() => send(q.prompt)}
+                  className="h-7 justify-start gap-1.5 text-[11px]"
+                >
                   <q.icon className="h-3 w-3" />{q.label}
                 </Button>
               ))}
             </div>
 
             {/* Chat */}
-            <ScrollArea className="flex-1 p-3">
+            <div ref={scrollRef} className="flex-1 overflow-auto p-3">
               <div className="mb-3 rounded-lg border border-border bg-muted/30 p-2 text-[10px] text-muted-foreground">
-                Context: <code className="text-foreground">{active}</code>
+                Context: <code className="text-foreground">{active}</code> · {activeContent.split("\n").length} lines
               </div>
+              {messages.length === 0 && !isLoading && (
+                <div className="rounded-lg border border-dashed border-border/60 p-3 text-xs text-muted-foreground">
+                  Hi! I&apos;m your AI pair-programmer. Ask me to <span className="text-foreground">refactor</span>, <span className="text-foreground">explain</span>, or <span className="text-foreground">generate code</span> for the current file. When I propose changes, hit <span className="text-foreground">Apply</span> to write them into the editor.
+                </div>
+              )}
               <div className="space-y-3">
-                {chat.map((m, i) => (
-                  <div key={i} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${m.role === "user" ? "bg-muted" : "bg-gradient-to-br from-primary to-accent"}`}>
-                      {m.role === "user" ? <span className="text-[9px] font-bold">JD</span> : <Bot className="h-3 w-3 text-white" />}
+                {messages.map((m) => {
+                  const text = m.parts
+                    .map((p) => (p.type === "text" ? p.text : ""))
+                    .join("");
+                  const codeBlock = m.role === "assistant" ? extractLastCodeBlock(text) : null;
+                  const applied = appliedIds[m.id];
+                  return (
+                    <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${m.role === "user" ? "bg-muted" : "bg-gradient-to-br from-primary to-accent"}`}>
+                        {m.role === "user" ? <span className="text-[9px] font-bold">JD</span> : <Bot className="h-3 w-3 text-white" />}
+                      </div>
+                      <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
+                        <div className="prose prose-invert prose-xs max-w-none [&_pre]:my-1.5 [&_pre]:max-h-48 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_code]:text-[11px] [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1">
+                          <ReactMarkdown>{text || (m.role === "assistant" && isLoading ? "…" : "")}</ReactMarkdown>
+                        </div>
+                        {codeBlock && (
+                          <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
+                            <span className="truncate text-[10px] text-muted-foreground">
+                              {codeBlock.code.split("\n").length} lines · {codeBlock.lang ?? activeLang}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant={applied ? "outline" : "default"}
+                              disabled={applied}
+                              onClick={() => applyCode(m.id, codeBlock.code)}
+                              className="h-6 gap-1 px-2 text-[10px]"
+                            >
+                              {applied ? <><Check className="h-3 w-3" />Applied</> : <><Wand2 className="h-3 w-3" />Apply to {active.split("/").pop()}</>}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className={`max-w-[85%] rounded-lg px-2.5 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
-                      {m.text}
+                  );
+                })}
+                {isLoading && messages[messages.length - 1]?.role === "user" && (
+                  <div className="flex gap-2">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary to-accent">
+                      <Bot className="h-3 w-3 text-white" />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />Thinking…
                     </div>
                   </div>
-                ))}
+                )}
+                {error && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+                    {error.message}
+                  </div>
+                )}
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Composer */}
             <div className="border-t border-border/60 p-2">
-              <div className="rounded-lg border border-border bg-background p-2">
+              <div className="rounded-lg border border-border bg-background p-2 focus-within:border-primary/50">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -355,12 +471,18 @@ function EditorPage() {
                 />
                 <div className="flex items-center justify-between border-t border-border/60 pt-2">
                   <div className="flex gap-1">
-                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@file</Badge>
+                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@{active.split("/").pop()}</Badge>
                     <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@docs</Badge>
                   </div>
-                  <Button size="icon" onClick={send} className="h-6 w-6 bg-gradient-to-r from-primary to-accent">
-                    <Send className="h-3 w-3" />
-                  </Button>
+                  {isLoading ? (
+                    <Button size="icon" onClick={() => stop()} variant="outline" className="h-6 w-6">
+                      <Square className="h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <Button size="icon" onClick={() => send()} disabled={!input.trim()} className="h-6 w-6 bg-gradient-to-r from-primary to-accent">
+                      <Send className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
