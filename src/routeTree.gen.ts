@@ -19,6 +19,7 @@ import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as GithubRouteImport } from './routes/github'
+import { Route as EditorRouteImport } from './routes/editor'
 import { Route as DevopsRouteImport } from './routes/devops'
 import { Route as CodeReviewRouteImport } from './routes/code-review'
 import { Route as BillingRouteImport } from './routes/billing'
@@ -79,6 +80,11 @@ const GithubRoute = GithubRouteImport.update({
   path: '/github',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EditorRoute = EditorRouteImport.update({
+  id: '/editor',
+  path: '/editor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevopsRoute = DevopsRouteImport.update({
   id: '/devops',
   path: '/devops',
@@ -134,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
+  '/editor': typeof EditorRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
+  '/editor': typeof EditorRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/billing': typeof BillingRoute
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
+  '/editor': typeof EditorRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/code-review'
     | '/devops'
+    | '/editor'
     | '/github'
     | '/notifications'
     | '/onboarding'
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/code-review'
     | '/devops'
+    | '/editor'
     | '/github'
     | '/notifications'
     | '/onboarding'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/code-review'
     | '/devops'
+    | '/editor'
     | '/github'
     | '/notifications'
     | '/onboarding'
@@ -264,6 +276,7 @@ export interface RootRouteChildren {
   BillingRoute: typeof BillingRoute
   CodeReviewRoute: typeof CodeReviewRoute
   DevopsRoute: typeof DevopsRoute
+  EditorRoute: typeof EditorRoute
   GithubRoute: typeof GithubRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -346,6 +359,13 @@ declare module '@tanstack/react-router' {
       path: '/github'
       fullPath: '/github'
       preLoaderRoute: typeof GithubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/editor': {
+      id: '/editor'
+      path: '/editor'
+      fullPath: '/editor'
+      preLoaderRoute: typeof EditorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/devops': {
@@ -435,6 +455,7 @@ const rootRouteChildren: RootRouteChildren = {
   BillingRoute: BillingRoute,
   CodeReviewRoute: CodeReviewRoute,
   DevopsRoute: DevopsRoute,
+  EditorRoute: EditorRoute,
   GithubRoute: GithubRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
@@ -449,3 +470,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
