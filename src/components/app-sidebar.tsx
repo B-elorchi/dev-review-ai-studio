@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, FolderGit2, ScanSearch, Workflow, Bot,
   Github, Send, BarChart3, Settings, Sparkles, GitPullRequest,
-  LayoutTemplate, Bell, Users, KeyRound, CreditCard, FileLock2,
+  LayoutTemplate, Bell, Users, KeyRound, CreditCard, FileLock2, Code2,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -15,6 +15,7 @@ const nav = [
   { title: "Pull Requests", url: "/pull-requests", icon: GitPullRequest },
   { title: "Code Review", url: "/code-review", icon: ScanSearch },
   { title: "DevOps Generator", url: "/devops", icon: Workflow },
+  { title: "Editor", url: "/editor", icon: Code2 },
   { title: "AI Agents", url: "/agents", icon: Bot },
   { title: "Templates", url: "/templates", icon: LayoutTemplate },
 ];
