@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Search, Bell, ChevronDown, Command } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -62,11 +63,11 @@ export function TopNav() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Billing</DropdownMenuItem>
+            <DropdownMenuItem asChild><Link to="/settings">Profile</Link></DropdownMenuItem>
+            <DropdownMenuItem asChild><Link to="/settings">Settings</Link></DropdownMenuItem>
+            <DropdownMenuItem asChild><Link to="/billing">Billing</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Log out</DropdownMenuItem>
+            <DropdownMenuItem asChild className="text-destructive"><Link to="/auth">Log out</Link></DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
