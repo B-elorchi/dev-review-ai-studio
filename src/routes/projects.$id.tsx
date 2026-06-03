@@ -112,7 +112,7 @@ function Workspace() {
         </Button>
       </div>
 
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
+      <ResizablePanelGroup orientation="horizontal" className="flex-1">
         {/* File explorer */}
         <ResizablePanel defaultSize={18} minSize={12}>
           <div className="flex h-full flex-col border-r border-border/60 bg-sidebar/50">
@@ -126,7 +126,7 @@ function Workspace() {
 
         {/* Editor + terminal */}
         <ResizablePanel defaultSize={56}>
-          <ResizablePanelGroup direction="vertical">
+          <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize={70}>
               <div className="flex h-full flex-col bg-[#0e1320]">
                 <div className="flex h-9 items-center gap-0.5 overflow-x-auto border-b border-border/60 bg-background/40 px-1">
