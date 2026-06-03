@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import ReactMarkdown from "react-markdown";
 import {
-  Bot, ChevronRight, File, FileCode, FilePlus, Folder, FolderOpen, GitBranch,
-  Play, Save, Search, Send, Settings as SettingsIcon, Sparkles, Terminal as TerminalIcon,
-  X, Circle, ChevronDown, Wand2, Command,
+  Bot, Check, ChevronRight, File, FileCode, FilePlus, Folder, FolderOpen, GitBranch,
+  Loader2, Play, Save, Search, Send, Settings as SettingsIcon, Sparkles, Square,
+  Terminal as TerminalIcon, X, Circle, ChevronDown, Wand2, Command,
 } from "lucide-react";
 import { CodeEditor } from "@/components/code-editor";
 import { Button } from "@/components/ui/button";
@@ -13,6 +16,7 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/editor")({
   ssr: false,
