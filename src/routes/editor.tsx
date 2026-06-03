@@ -306,7 +306,11 @@ function EditorPage() {
                 {/* Monaco */}
                 <div className="flex-1 min-h-0">
                   {activeFile ? (
-                    <CodeEditor value={activeFile.content ?? ""} language={activeFile.lang ?? "plaintext"} />
+                    <CodeEditor
+                      value={activeContent}
+                      language={activeLang}
+                      onChange={(v) => setContents((c) => ({ ...c, [active]: v }))}
+                    />
                   ) : (
                     <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Select a file to start editing</div>
                   )}
