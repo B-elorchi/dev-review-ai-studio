@@ -29,6 +29,7 @@ export function CodeEditor({
       height={height}
       language={language}
       value={value}
+      onChange={(v) => onChange?.(v ?? "")}
       theme="devreview-dark"
       options={{
         readOnly,
