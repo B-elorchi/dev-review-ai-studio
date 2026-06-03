@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, FolderGit2, ScanSearch, Workflow, Bot,
-  Github, Send, BarChart3, Settings, Sparkles,
+  Github, Send, BarChart3, Settings, Sparkles, GitPullRequest,
+  LayoutTemplate, Bell, Users, KeyRound, CreditCard, FileLock2,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -11,16 +12,23 @@ import {
 const nav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Projects", url: "/projects", icon: FolderGit2 },
+  { title: "Pull Requests", url: "/pull-requests", icon: GitPullRequest },
   { title: "Code Review", url: "/code-review", icon: ScanSearch },
   { title: "DevOps Generator", url: "/devops", icon: Workflow },
   { title: "AI Agents", url: "/agents", icon: Bot },
+  { title: "Templates", url: "/templates", icon: LayoutTemplate },
 ];
 const integrations = [
   { title: "GitHub", url: "/github", icon: Github },
   { title: "Telegram", url: "/telegram", icon: Send },
 ];
 const system = [
+  { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Team", url: "/team", icon: Users },
+  { title: "API Keys", url: "/api-keys", icon: KeyRound },
+  { title: "Billing", url: "/billing", icon: CreditCard },
+  { title: "Audit Log", url: "/audit-log", icon: FileLock2 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
