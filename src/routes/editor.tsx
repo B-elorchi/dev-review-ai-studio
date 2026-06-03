@@ -381,38 +381,87 @@ function EditorPage() {
 
             {/* Quick actions */}
             <div className="grid grid-cols-2 gap-1.5 border-b border-border/60 p-2">
-              {[
-                { label: "Explain", icon: Bot }, { label: "Refactor", icon: Wand2 },
-                { label: "Fix bugs", icon: Circle }, { label: "Add tests", icon: FileCode },
-              ].map((q) => (
-                <Button key={q.label} variant="outline" size="sm" className="h-7 justify-start gap-1.5 text-[11px]">
+              {quickActions.map((q) => (
+                <Button
+                  key={q.label}
+                  variant="outline"
+                  size="sm"
+                  disabled={isLoading}
+                  onClick={() => send(q.prompt)}
+                  className="h-7 justify-start gap-1.5 text-[11px]"
+                >
                   <q.icon className="h-3 w-3" />{q.label}
                 </Button>
               ))}
             </div>
 
             {/* Chat */}
-            <ScrollArea className="flex-1 p-3">
+            <ScrollArea className="flex-1 p-3" viewportRef={scrollRef}>
               <div className="mb-3 rounded-lg border border-border bg-muted/30 p-2 text-[10px] text-muted-foreground">
-                Context: <code className="text-foreground">{active}</code>
+                Context: <code className="text-foreground">{active}</code> · {activeContent.split("\n").length} lines
               </div>
+              {messages.length === 0 && !isLoading && (
+                <div className="rounded-lg border border-dashed border-border/60 p-3 text-xs text-muted-foreground">
+                  Hi! I&apos;m your AI pair-programmer. Ask me to <span className="text-foreground">refactor</span>, <span className="text-foreground">explain</span>, or <span className="text-foreground">generate code</span> for the current file. When I propose changes, hit <span className="text-foreground">Apply</span> to write them into the editor.
+                </div>
+              )}
               <div className="space-y-3">
-                {chat.map((m, i) => (
-                  <div key={i} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${m.role === "user" ? "bg-muted" : "bg-gradient-to-br from-primary to-accent"}`}>
-                      {m.role === "user" ? <span className="text-[9px] font-bold">JD</span> : <Bot className="h-3 w-3 text-white" />}
+                {messages.map((m) => {
+                  const text = m.parts
+                    .map((p) => (p.type === "text" ? p.text : ""))
+                    .join("");
+                  const codeBlock = m.role === "assistant" ? extractLastCodeBlock(text) : null;
+                  const applied = appliedIds[m.id];
+                  return (
+                    <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${m.role === "user" ? "bg-muted" : "bg-gradient-to-br from-primary to-accent"}`}>
+                        {m.role === "user" ? <span className="text-[9px] font-bold">JD</span> : <Bot className="h-3 w-3 text-white" />}
+                      </div>
+                      <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
+                        <div className="prose prose-invert prose-xs max-w-none [&_pre]:my-1.5 [&_pre]:max-h-48 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_code]:text-[11px] [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1">
+                          <ReactMarkdown>{text || (m.role === "assistant" && isLoading ? "…" : "")}</ReactMarkdown>
+                        </div>
+                        {codeBlock && (
+                          <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
+                            <span className="truncate text-[10px] text-muted-foreground">
+                              {codeBlock.code.split("\n").length} lines · {codeBlock.lang ?? activeLang}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant={applied ? "outline" : "default"}
+                              disabled={applied}
+                              onClick={() => applyCode(m.id, codeBlock.code)}
+                              className="h-6 gap-1 px-2 text-[10px]"
+                            >
+                              {applied ? <><Check className="h-3 w-3" />Applied</> : <><Wand2 className="h-3 w-3" />Apply to {active.split("/").pop()}</>}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className={`max-w-[85%] rounded-lg px-2.5 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
-                      {m.text}
+                  );
+                })}
+                {isLoading && messages[messages.length - 1]?.role === "user" && (
+                  <div className="flex gap-2">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary to-accent">
+                      <Bot className="h-3 w-3 text-white" />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />Thinking…
                     </div>
                   </div>
-                ))}
+                )}
+                {error && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+                    {error.message}
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
             {/* Composer */}
             <div className="border-t border-border/60 p-2">
-              <div className="rounded-lg border border-border bg-background p-2">
+              <div className="rounded-lg border border-border bg-background p-2 focus-within:border-primary/50">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -422,12 +471,18 @@ function EditorPage() {
                 />
                 <div className="flex items-center justify-between border-t border-border/60 pt-2">
                   <div className="flex gap-1">
-                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@file</Badge>
+                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@{active.split("/").pop()}</Badge>
                     <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@docs</Badge>
                   </div>
-                  <Button size="icon" onClick={send} className="h-6 w-6 bg-gradient-to-r from-primary to-accent">
-                    <Send className="h-3 w-3" />
-                  </Button>
+                  {isLoading ? (
+                    <Button size="icon" onClick={() => stop()} variant="outline" className="h-6 w-6">
+                      <Square className="h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <Button size="icon" onClick={() => send()} disabled={!input.trim()} className="h-6 w-6 bg-gradient-to-r from-primary to-accent">
+                      <Send className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
