@@ -396,7 +396,7 @@ function EditorPage() {
             </div>
 
             {/* Chat */}
-            <ScrollArea className="flex-1 p-3" viewportRef={scrollRef}>
+            <div ref={scrollRef} className="flex-1 overflow-auto p-3">
               <div className="mb-3 rounded-lg border border-border bg-muted/30 p-2 text-[10px] text-muted-foreground">
                 Context: <code className="text-foreground">{active}</code> · {activeContent.split("\n").length} lines
               </div>
