@@ -123,12 +123,65 @@ function findFile(path: string): FileNode | undefined {
 function EditorPage() {
   const [openTabs, setOpenTabs] = useState<string[]>(["src/App.tsx", "src/components/Button.tsx", "package.json"]);
   const [active, setActive] = useState("src/App.tsx");
-  const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "Hi! I'm your AI pair-programmer. Ask me to refactor, explain, or generate code from the current file." },
-  ]);
+function extractLastCodeBlock(text: string): { lang?: string; code: string } | null {
+  const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  let last: { lang?: string; code: string } | null = null;
+  while ((m = re.exec(text)) !== null) {
+    last = { lang: m[1] || undefined, code: m[2] };
+  }
+  return last;
+}
+
+function EditorPage() {
+  const [openTabs, setOpenTabs] = useState<string[]>(["src/App.tsx", "src/components/Button.tsx", "package.json"]);
+  const [active, setActive] = useState("src/App.tsx");
+  // Per-path overridden contents (so AI edits + manual edits persist)
+  const [contents, setContents] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const f of allFiles) init[f.path] = f.node.content ?? "";
+    return init;
+  });
   const [input, setInput] = useState("");
+  const [appliedIds, setAppliedIds] = useState<Record<string, boolean>>({});
 
   const activeFile = findFile(active);
+  const activeContent = contents[active] ?? activeFile?.content ?? "";
+  const activeLang = activeFile?.lang ?? "plaintext";
+
+  // Keep a ref so transport prepareSendMessagesRequest always sees latest context
+  const ctxRef = useRef({ active, activeContent, activeLang });
+  useEffect(() => {
+    ctxRef.current = { active, activeContent, activeLang };
+  }, [active, activeContent, activeLang]);
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/editor-chat",
+        prepareSendMessagesRequest: ({ messages, body }) => ({
+          body: {
+            ...body,
+            messages,
+            fileName: ctxRef.current.active,
+            fileLang: ctxRef.current.activeLang,
+            fileContent: ctxRef.current.activeContent,
+          },
+        }),
+      }),
+    [],
+  );
+
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport,
+    onError: (e) => toast.error(e.message || "AI request failed"),
+  });
+
+  const isLoading = status === "submitted" || status === "streaming";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, isLoading]);
 
   const openFile = (path: string) => {
     if (!openTabs.includes(path)) setOpenTabs([...openTabs, path]);
@@ -139,15 +192,24 @@ function EditorPage() {
     setOpenTabs(next);
     if (active === path && next.length) setActive(next[next.length - 1]);
   };
-  const send = () => {
-    if (!input.trim()) return;
-    setChat([
-      ...chat,
-      { role: "user", text: input },
-      { role: "ai", text: `Analyzing \`${active.split("/").pop()}\` and proposing changes…` },
-    ]);
+  const send = (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || isLoading) return;
+    sendMessage({ text });
     setInput("");
   };
+  const applyCode = (msgId: string, code: string) => {
+    setContents((c) => ({ ...c, [active]: code }));
+    setAppliedIds((s) => ({ ...s, [msgId]: true }));
+    toast.success(`Applied changes to ${active.split("/").pop()}`);
+  };
+
+  const quickActions: { label: string; icon: typeof Bot; prompt: string }[] = [
+    { label: "Explain", icon: Bot, prompt: "Explain what this file does, its structure, and any non-obvious behavior. Do not modify the code." },
+    { label: "Refactor", icon: Wand2, prompt: "Refactor this file for readability and maintainability. Return the full updated file." },
+    { label: "Fix bugs", icon: Circle, prompt: "Find and fix any bugs or potential issues in this file. Return the full updated file." },
+    { label: "Add tests", icon: FileCode, prompt: "Add tests for this file. If the file itself is the code, write a test file's full contents instead." },
+  ];
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-[#0a0d18]">
