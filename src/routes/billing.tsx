@@ -1,15 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Check, CreditCard, Download, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Check, CreditCard, Download, Sparkles, TrendingUp, Zap, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 export const Route = createFileRoute("/billing")({
   head: () => ({ meta: [{ title: "Billing — DevReview AI" }] }),
@@ -22,7 +24,10 @@ function BillingPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [usage, setUsage] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
-  const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<any>(null);
+  
+  const [upgradePlan, setUpgradePlan] = useState<string | null>(null);
+  const [upgrading, setUpgrading] = useState<boolean>(false);
 
   useEffect(() => {
     fetchApi("/billing/plans").then((r) => setPlans(r?.plans ?? [])).catch(console.error);
@@ -31,26 +36,28 @@ function BillingPage() {
       fetchApi("/billing/invoices", {}, workspaceId),
       fetchApi("/billing/usage", {}, workspaceId),
       fetchApi("/billing/subscription", {}, workspaceId),
-    ]).then(([inv, use, sub]) => {
+      fetchApi("/billing/payment-method", {}, workspaceId),
+    ]).then(([inv, use, sub, pay]) => {
       setInvoices(inv?.invoices ?? []);
       setUsage(use?.usage ?? null);
       setSubscription(sub?.subscription ?? null);
+      setPaymentMethod(pay?.method ?? null);
     }).catch(console.error);
   }, [workspaceId]);
 
-  const upgrade = async (planId: string) => {
-    if (!workspaceId) return;
-    setUpgrading(planId);
+  const stripeCheckout = async () => {
+    if (!workspaceId || !upgradePlan) return;
+    setUpgrading(true);
     try {
       const res = await fetchApi("/billing/stripe/checkout", {
         method: "POST",
-        body: JSON.stringify({ plan: planId }),
+        body: JSON.stringify({ plan: upgradePlan }),
       }, workspaceId);
       if (res?.url) window.location.href = res.url;
     } catch (err: any) {
       toast.error(err.message ?? "Checkout failed");
     } finally {
-      setUpgrading(null);
+      setUpgrading(false);
     }
   };
 
@@ -118,10 +125,10 @@ function BillingPage() {
                   <Button
                     className={`mt-6 w-full ${isPopular && !isCurrent ? "bg-gradient-to-r from-primary to-accent" : ""}`}
                     variant={isCurrent ? "outline" : "default"}
-                    disabled={isCurrent || upgrading === p.id || p.price === 0}
-                    onClick={() => !isCurrent && p.price > 0 && upgrade(p.id)}
+                    disabled={isCurrent || p.price === 0}
+                    onClick={() => !isCurrent && p.price > 0 && setUpgradePlan(p.id)}
                   >
-                    {upgrading === p.id ? "Redirecting…" : isCurrent ? "Current plan" : p.price === 0 ? "Downgrade" : "Upgrade"}
+                    {isCurrent ? "Current plan" : p.price === 0 ? "Downgrade" : "Upgrade"}
                   </Button>
                 </Card>
               );
@@ -135,8 +142,18 @@ function BillingPage() {
             <div>
               <h3 className="font-display text-base font-semibold">Payment method</h3>
               <div className="mt-2 flex items-center gap-3">
-                <div className="flex h-9 w-12 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white">VISA</div>
-                <div className="text-sm">•••• 4242 <span className="text-muted-foreground">expires 09/27</span></div>
+                {paymentMethod ? (
+                  <>
+                    <div className="flex h-9 w-12 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white uppercase">
+                      {paymentMethod.brand}
+                    </div>
+                    <div className="text-sm">
+                      •••• {paymentMethod.last4} <span className="text-muted-foreground">expires {paymentMethod.exp_month}/{paymentMethod.exp_year}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No payment method saved.</div>
+                )}
               </div>
             </div>
             <Button variant="outline" onClick={async () => {
@@ -171,7 +188,11 @@ function BillingPage() {
                   <TableCell className="font-mono text-xs">{inv.id?.slice(0, 8) ?? "—"}</TableCell>
                   <TableCell className="text-sm">{new Date(inv.date).toLocaleDateString()}</TableCell>
                   <TableCell className="text-sm">${((inv.amount ?? 0) / 100).toFixed(2)}</TableCell>
-                  <TableCell><Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400">Paid</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`capitalize ${inv.status === "paid" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-amber-500/30 bg-amber-500/10 text-amber-400"}`}>
+                      {inv.status}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     {inv.pdf ? (
                       <a href={inv.pdf} target="_blank" rel="noreferrer">
@@ -192,6 +213,62 @@ function BillingPage() {
           </Table>
         </Card>
       </div>
+
+      <Dialog open={!!upgradePlan} onOpenChange={(o) => !o && setUpgradePlan(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete your upgrade</DialogTitle>
+            <DialogDescription>Choose your preferred payment method below.</DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <Button className="w-full bg-gradient-to-r from-primary to-accent py-6 text-base" onClick={stripeCheckout} disabled={upgrading}>
+              {upgrading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-5 w-5" />}
+              Pay with Card
+            </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or</span></div>
+            </div>
+
+            <PayPalScriptProvider options={{ clientId: "test", currency: "USD", intent: "capture" }}>
+              <PayPalButtons
+                style={{ layout: "vertical", shape: "rect", color: "blue" }}
+                createOrder={async () => {
+                  try {
+                    const res = await fetchApi("/billing/paypal/create-order", {
+                      method: "POST",
+                      body: JSON.stringify({ plan: upgradePlan }),
+                    }, workspaceId);
+                    return res.id;
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to create PayPal order");
+                    throw err;
+                  }
+                }}
+                onApprove={async (data) => {
+                  try {
+                    const captureRes = await fetchApi("/billing/paypal/capture-order", {
+                      method: "POST",
+                      body: JSON.stringify({ orderId: data.orderID, plan: upgradePlan }),
+                    }, workspaceId);
+                    if (captureRes.status === "COMPLETED") {
+                      toast.success("Payment successful!");
+                      setUpgradePlan(null);
+                      window.location.reload();
+                    } else {
+                      toast.error("Payment not completed.");
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to capture payment");
+                  }
+                }}
+              />
+            </PayPalScriptProvider>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
