@@ -36,10 +36,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
-    let token = params.get("token") || localStorage.getItem("token");
+    const isPasswordReset = window.location.pathname.startsWith("/update-password");
+    const queryToken = isPasswordReset ? null : params.get("token");
+    let token = queryToken || localStorage.getItem("token");
 
     if (token) {
-      if (params.get("token")) {
+      if (queryToken) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
       localStorage.setItem("token", token);
