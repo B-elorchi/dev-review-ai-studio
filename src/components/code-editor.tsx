@@ -1,26 +1,35 @@
 import Editor, { loader } from "@monaco-editor/react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 
 loader.config({
   paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs" },
 });
 
-export function CodeEditor({
-  value,
-  defaultValue,
-  language = "typescript",
-  height = "100%",
-  readOnly = false,
-  onChange,
-}: {
-  // Use `value` for read-only / controlled display.
-  // Use `defaultValue` for editable mode — avoids cursor resets on re-render.
+export type CodeEditorHandle = {
+  /** Replace the entire editor content without remounting (preserves cursor). */
+  setValue: (code: string) => void;
+};
+
+export const CodeEditor = forwardRef<CodeEditorHandle, {
   value?: string;
   defaultValue?: string;
   language?: string;
   height?: string | number;
   readOnly?: boolean;
   onChange?: (value: string) => void;
-}) {
+}>(function CodeEditor(
+  { value, defaultValue, language = "typescript", height = "100%", readOnly = false, onChange },
+  ref,
+) {
+  const editorRef = useRef<any>(null);
+
+  useImperativeHandle(ref, () => ({
+    setValue(code: string) {
+      const model = editorRef.current?.getModel();
+      if (model) model.setValue(code);
+    },
+  }));
+
   const handleEditorWillMount = (monaco: any) => {
     monaco.editor.defineTheme("devreview-dark", {
       base: "vs-dark",
@@ -39,12 +48,11 @@ export function CodeEditor({
     <Editor
       height={height}
       language={language}
-      // When defaultValue is provided (edit mode) we leave value undefined so
-      // Monaco manages its own state. key-based remounting handles file switches.
       value={defaultValue !== undefined ? undefined : value}
       defaultValue={defaultValue !== undefined ? defaultValue : undefined}
       onChange={(v) => onChange?.(v ?? "")}
       beforeMount={handleEditorWillMount}
+      onMount={(editor) => { editorRef.current = editor; }}
       theme="devreview-dark"
       options={{
         readOnly,
@@ -64,4 +72,4 @@ export function CodeEditor({
       }
     />
   );
-}
+});

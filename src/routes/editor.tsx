@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Bot, Check, ChevronDown, ChevronRight, Circle, File, FileCode, FilePlus,
@@ -7,7 +7,7 @@ import {
   Send, Settings as SettingsIcon, Shield, Square, Sparkles,
   Terminal as TerminalIcon, Wand2, Wrench, X, Zap,
 } from "lucide-react";
-import { CodeEditor } from "@/components/code-editor";
+import { CodeEditor, type CodeEditorHandle } from "@/components/code-editor";
 import { Terminal } from "@/components/Terminal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,22 @@ import {
 import { toast } from "sonner";
 import { API_BASE, fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
+
+/** Fetch with automatic token-refresh retry on 401 */
+async function fetchWithRefresh(url: string, init: RequestInit): Promise<Response> {
+  let resp = await fetch(url, init);
+  if (resp.status === 401) {
+    const refreshed = await useAuthStore.getState().refreshSession();
+    if (refreshed) {
+      // Retry with new token
+      const newToken = localStorage.getItem("token");
+      const headers = new Headers(init.headers);
+      if (newToken) headers.set("Authorization", `Bearer ${newToken}`);
+      resp = await fetch(url, { ...init, headers });
+    }
+  }
+  return resp;
+}
 
 export const Route = createFileRoute("/editor")({
   ssr: false,
@@ -120,6 +136,48 @@ function injectContent(nodes: FileNode[], samples: Record<string, { lang: string
   });
 }
 
+/** Insert a new file or folder node into the tree at the given parent path (empty = root) */
+function addNodeToTree(
+  nodes: FileNode[],
+  parentPath: string,
+  name: string,
+  type: "file" | "folder",
+): FileNode[] {
+  if (!parentPath) {
+    // Root level
+    const newNode: FileNode = type === "folder"
+      ? { name, type: "folder", children: [] }
+      : { name, type: "file", lang: inferLang(name), content: "" };
+    return [...nodes, newNode];
+  }
+  return nodes.map((n) => {
+    const nodePath = n.name; // top-level: just the name
+    if (n.type === "folder") {
+      if (nodePath === parentPath) {
+        const newNode: FileNode = type === "folder"
+          ? { name, type: "folder", children: [] }
+          : { name, type: "file", lang: inferLang(name), content: "" };
+        return { ...n, children: [...(n.children ?? []), newNode] };
+      }
+      if (parentPath.startsWith(nodePath + "/")) {
+        return { ...n, children: addNodeToTree(n.children ?? [], parentPath.slice(nodePath.length + 1), name, type) };
+      }
+    }
+    return n;
+  });
+}
+
+function inferLang(filename: string): string {
+  const ext = filename.split(".").pop() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
+    py: "python", json: "json", md: "markdown", css: "css", html: "html",
+    yaml: "yaml", yml: "yaml", sh: "shell", env: "plaintext", toml: "toml",
+    rs: "rust", go: "go", java: "java", cpp: "cpp", c: "c",
+  };
+  return map[ext] ?? "plaintext";
+}
+
 function extractLastCodeBlock(text: string) {
   const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
@@ -128,24 +186,70 @@ function extractLastCodeBlock(text: string) {
   return last;
 }
 
+// ─── inline create input ──────────────────────────────────────────────────────
+
+function CreatingInput({
+  type, depth, onConfirm, onCancel,
+}: {
+  type: "file" | "folder"; depth: number;
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => { inputRef.current?.focus(); }, []);
+
+  const confirm = () => {
+    const name = value.trim();
+    if (name) onConfirm(name);
+    else onCancel();
+  };
+
+  return (
+    <div className="flex items-center gap-1 rounded py-0.5 pr-2" style={{ paddingLeft: depth * 12 + 20 }}>
+      {type === "file"
+        ? <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        : <Folder className="h-3.5 w-3.5 shrink-0 text-sky-400" />}
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") confirm();
+          if (e.key === "Escape") onCancel();
+        }}
+        onBlur={confirm}
+        placeholder={type === "file" ? "filename.ts" : "folder-name"}
+        className="min-w-0 flex-1 rounded border border-primary/50 bg-background px-1 py-0 text-xs outline-none"
+      />
+    </div>
+  );
+}
+
 // ─── file tree ────────────────────────────────────────────────────────────────
 
 function FileTreeNode({
   node, depth, parentPath, onOpen, activePath, dirtyPaths,
+  creating, onCreateConfirm, onCreateCancel, onStartCreate,
 }: {
   node: FileNode; depth: number; parentPath: string;
   onOpen: (path: string, node: FileNode) => void;
   activePath: string; dirtyPaths: Set<string>;
+  creating?: { type: "file" | "folder"; parentPath: string } | null;
+  onCreateConfirm?: (name: string) => void;
+  onCreateCancel?: () => void;
+  onStartCreate?: (type: "file" | "folder", parentPath: string) => void;
 }) {
   const [open, setOpen] = useState(depth < 1);
   const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
 
   if (node.type === "folder") {
+    const isCreatingHere = creating?.parentPath === fullPath;
     return (
       <div>
         <button
           onClick={() => setOpen(!open)}
-          className="flex w-full items-center gap-1 rounded py-1 pr-2 text-xs hover:bg-muted/50"
+          className="group flex w-full items-center gap-1 rounded py-1 pr-1 text-xs hover:bg-muted/50"
           style={{ paddingLeft: depth * 12 + 6 }}
         >
           <ChevronRight className={`h-3 w-3 shrink-0 transition ${open ? "rotate-90" : ""}`} />
@@ -153,11 +257,31 @@ function FileTreeNode({
             ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-sky-400" />
             : <Folder    className="h-3.5 w-3.5 shrink-0 text-sky-400" />}
           <span className="min-w-0 flex-1 truncate text-left" title={node.name}>{node.name}</span>
+          <span className="ml-auto hidden items-center gap-0.5 group-hover:flex">
+            <span title="New File" onClick={(e) => { e.stopPropagation(); setOpen(true); onStartCreate?.("file", fullPath); }}
+              className="rounded p-0.5 hover:bg-muted"><FilePlus className="h-3 w-3 text-muted-foreground" /></span>
+            <span title="New Folder" onClick={(e) => { e.stopPropagation(); setOpen(true); onStartCreate?.("folder", fullPath); }}
+              className="rounded p-0.5 hover:bg-muted"><Folder className="h-3 w-3 text-muted-foreground" /></span>
+          </span>
         </button>
-        {open && node.children?.map((c) => (
-          <FileTreeNode key={c.name} node={c} depth={depth + 1} parentPath={fullPath}
-            onOpen={onOpen} activePath={activePath} dirtyPaths={dirtyPaths} />
-        ))}
+        {open && (
+          <>
+            {node.children?.map((c) => (
+              <FileTreeNode key={c.name} node={c} depth={depth + 1} parentPath={fullPath}
+                onOpen={onOpen} activePath={activePath} dirtyPaths={dirtyPaths}
+                creating={creating} onCreateConfirm={onCreateConfirm} onCreateCancel={onCreateCancel}
+                onStartCreate={onStartCreate} />
+            ))}
+            {isCreatingHere && (
+              <CreatingInput
+                type={creating!.type}
+                depth={depth + 1}
+                onConfirm={onCreateConfirm!}
+                onCancel={onCreateCancel!}
+              />
+            )}
+          </>
+        )}
       </div>
     );
   }
@@ -180,11 +304,12 @@ function FileTreeNode({
 // ─── agent chat ───────────────────────────────────────────────────────────────
 
 function AgentChat({
-  agent, fileName, fileContent, workspaceId, onApply,
+  agent, fileName, fileContent, workspaceId, onApply, onLiveEdit,
 }: {
   agent: typeof AGENTS[number];
   fileName: string; fileContent: string; workspaceId: string;
   onApply: (code: string) => void;
+  onLiveEdit: (code: string) => void;
 }) {
   const [chat, setChat] = useState<ChatMsg[]>([
     { role: "agent", text: `Hi! I'm your **${agent.label}** agent. I use specialised tools to analyse your code deeply — ask me anything or hit a quick action.` },
@@ -192,6 +317,7 @@ function AgentChat({
   const [input, setInput]       = useState("");
   const [streaming, setStreaming] = useState(false);
   const [thinking, setThinking]   = useState(false);
+  const [liveEditing, setLiveEditing] = useState(false);
   const [applied, setApplied]   = useState<Record<number, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -214,7 +340,7 @@ function AgentChat({
     abortRef.current = new AbortController();
     try {
       const token = localStorage.getItem("token");
-      const resp = await fetch(`${API_BASE}/ai/inline-chat`, {
+      const resp = await fetchWithRefresh(`${API_BASE}/ai/inline-chat`, {
         method: "POST",
         signal: abortRef.current.signal,
         headers: {
@@ -222,13 +348,26 @@ function AgentChat({
           Authorization: `Bearer ${token}`,
           "x-workspace-id": workspaceId,
         },
-        body: JSON.stringify({ agentType: agent.id, message: text, fileName, fileContent, history }),
+        body: JSON.stringify({
+          agentType: agent.id,
+          message: /add|update|edit|fix|refactor|change|insert|remove|rename|rewrite/i.test(text)
+            ? `${text}\n\nIMPORTANT: Return the COMPLETE updated file (every single line) inside ONE fenced code block. Do not return only the changed part.`
+            : text,
+          fileName,
+          fileContent,
+          history,
+        }),
       });
 
-      if (!resp.ok || !resp.body) throw new Error("Stream failed");
+      if (!resp.ok || !resp.body) {
+        const errJson = await resp.json().catch(() => ({}));
+        throw new Error(errJson.error || `Request failed (${resp.status})`);
+      }
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      let accumulated = ""; // full streamed response
+      let codeStart = -1; // index in `accumulated` where code content begins (after opening fence)
 
       while (true) {
         const { done, value } = await reader.read();
@@ -242,11 +381,30 @@ function AgentChat({
               const d = JSON.parse(line.slice(5).trim());
               if (d.text) {
                 setThinking(false);
+                accumulated += d.text;
                 setChat((c) => {
                   const next = [...c];
-                  next[next.length - 1] = { ...next[next.length - 1], text: next[next.length - 1].text + d.text };
+                  next[next.length - 1] = { ...next[next.length - 1], text: accumulated };
                   return next;
                 });
+
+                // Detect opening fence once and remember where code starts
+                if (codeStart === -1) {
+                  const fenceMatch = accumulated.match(/^```[a-zA-Z0-9_+-]*\n/m);
+                  if (fenceMatch && fenceMatch.index !== undefined) {
+                    codeStart = fenceMatch.index + fenceMatch[0].length;
+                    setLiveEditing(true);
+                  }
+                }
+
+                // If inside a code block, extract raw code and push live
+                if (codeStart !== -1) {
+                  const rest = accumulated.slice(codeStart);
+                  // Strip closing fence if it has arrived
+                  const closingFence = rest.indexOf("\n```");
+                  const liveCode = closingFence === -1 ? rest : rest.slice(0, closingFence);
+                  onLiveEdit(liveCode);
+                }
               }
             } catch {}
           }
@@ -256,13 +414,14 @@ function AgentChat({
       if (err.name !== "AbortError") {
         setChat((c) => {
           const next = [...c];
-          next[next.length - 1] = { role: "agent", text: "Something went wrong. Please try again." };
+          next[next.length - 1] = { role: "agent", text: `Error: ${err.message ?? "Something went wrong. Please try again."}` };
           return next;
         });
       }
     } finally {
       setStreaming(false);
       setThinking(false);
+      setLiveEditing(false);
     }
   }, [input, streaming, chat, agent.id, fileName, fileContent, workspaceId]);
 
@@ -282,8 +441,17 @@ function AgentChat({
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          <span className="text-[10px] text-emerald-400">Live</span>
+          {liveEditing ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+              <span className="text-[10px] text-amber-400">Live editing…</span>
+            </>
+          ) : (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[10px] text-emerald-400">Live</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -292,8 +460,8 @@ function AgentChat({
         {[
           { label: "Review file", prompt: "Review this file and list all issues you find, ordered by severity." },
           { label: "Explain", prompt: "Explain what this file does and how it works." },
-          { label: "Refactor", prompt: "Refactor this file for better readability. Return the complete updated file in a code block." },
-          { label: "Fix bugs", prompt: "Find and fix any bugs. Return the complete fixed file in a code block." },
+          { label: "Refactor", prompt: "Refactor this file for better readability. Return the COMPLETE updated file (every line) inside a single code block so I can apply it." },
+          { label: "Fix bugs", prompt: "Find and fix all bugs. Return the COMPLETE fixed file (every line) inside a single code block so I can apply it." },
         ].map((a) => (
           <button
             key={a.label}
@@ -464,6 +632,20 @@ function EditorPage() {
     if (active === path && next.length) setActive(next[next.length - 1]);
   };
 
+  const handleCreateConfirm = (name: string) => {
+    if (!creating) return;
+    const fullPath = creating.parentPath ? `${creating.parentPath}/${name}` : name;
+    setFileTree((t) => addNodeToTree(t, creating.parentPath, name, creating.type));
+    setCreating(null);
+    if (creating.type === "file") {
+      setContents((c) => ({ ...c, [fullPath]: "" }));
+      setOriginals((o) => ({ ...o, [fullPath]: "" }));
+      if (!openTabs.includes(fullPath)) setOpenTabs((tabs) => [...tabs, fullPath]);
+      setActive(fullPath);
+    }
+    toast.success(`Created ${creating.type} "${name}"`);
+  };
+
   const handleSave = async () => {
     if (!selectedProject || dirtyPaths.size === 0) return;
     
@@ -489,6 +671,10 @@ function EditorPage() {
       toast.error(err.message || "Failed to save files", { id: toastId });
     }
   };
+
+  const editorRef = useRef<CodeEditorHandle>(null);
+  const [applyVersion, setApplyVersion] = useState(0);
+  const [creating, setCreating] = useState<{ type: "file" | "folder"; parentPath: string } | null>(null);
 
   const toggleSidebar = (bar: typeof activeBar) => {
     if (activeBar === bar && sidebarOpen) { setSidebarOpen(false); return; }
@@ -606,8 +792,14 @@ function EditorPage() {
                     </span>
                     {activeBar === "explorer" && (
                       <div className="flex gap-0.5">
-                        <Button size="icon" variant="ghost" className="h-5 w-5"><FilePlus className="h-3 w-3" /></Button>
-                        <Button size="icon" variant="ghost" className="h-5 w-5"><Folder className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5" title="New File"
+                          onClick={() => setCreating({ type: "file", parentPath: "" })}>
+                          <FilePlus className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5" title="New Folder"
+                          onClick={() => setCreating({ type: "folder", parentPath: "" })}>
+                          <Folder className="h-3 w-3" />
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -620,10 +812,23 @@ function EditorPage() {
                       {loadingProject ? (
                         <div className="flex justify-center p-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
                       ) : (
-                        fileTree.map((n) => (
-                          <FileTreeNode key={n.name} node={n} depth={0} parentPath="" onOpen={openFile}
-                            activePath={active} dirtyPaths={dirtyPaths} />
-                        ))
+                        <>
+                          {fileTree.map((n) => (
+                            <FileTreeNode key={n.name} node={n} depth={0} parentPath="" onOpen={openFile}
+                              activePath={active} dirtyPaths={dirtyPaths}
+                              creating={creating} onCreateConfirm={handleCreateConfirm} onCreateCancel={() => setCreating(null)}
+                              onStartCreate={(type, parentPath) => setCreating({ type, parentPath })} />
+                          ))}
+                          {/* Root-level create input */}
+                          {creating && creating.parentPath === "" && (
+                            <CreatingInput
+                              type={creating.type}
+                              depth={0}
+                              onConfirm={handleCreateConfirm}
+                              onCancel={() => setCreating(null)}
+                            />
+                          )}
+                        </>
                       )}
                     </ScrollArea>
                   )}
@@ -714,7 +919,8 @@ function EditorPage() {
                   <div className="min-h-0 flex-1">
                     {activeNode ? (
                       <CodeEditor
-                        key={active}
+                        ref={editorRef}
+                        key={`${active}-${applyVersion}`}
                         defaultValue={activeContent}
                         language={activeLang}
                         onChange={(v) => setContents((c) => ({ ...c, [active]: v }))}
@@ -811,7 +1017,15 @@ function EditorPage() {
                         fileName={active}
                         fileContent={activeContent}
                         workspaceId={workspaceId}
-                        onApply={(code) => setContents((c) => ({ ...c, [active]: code }))}
+                        onLiveEdit={(code) => {
+                          // Stream code directly into Monaco without remounting
+                          editorRef.current?.setValue(code);
+                          setContents((c) => ({ ...c, [active]: code }));
+                        }}
+                        onApply={(code) => {
+                          setContents((c) => ({ ...c, [active]: code }));
+                          setApplyVersion((v) => v + 1);
+                        }}
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
