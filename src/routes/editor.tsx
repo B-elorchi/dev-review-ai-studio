@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Bot, Check, ChevronDown, ChevronRight, Circle, File, FileCode, FilePlus,
-  Folder, FolderOpen, GitBranch, Loader2, Lock, Play, Save, Search,
+  Folder, FolderOpen, GitBranch, Loader2, Lock, Play, Save, Search, Cpu,
   Send, Settings as SettingsIcon, Shield, Square, Sparkles,
   Terminal as TerminalIcon, Wand2, Wrench, X, Zap,
 } from "lucide-react";
@@ -187,11 +187,12 @@ function AgentChat({
   onApply: (code: string) => void;
 }) {
   const [chat, setChat] = useState<ChatMsg[]>([
-    { role: "agent", text: `Hi! I'm your **${agent.label}** agent. Ask me anything about the current file or let me analyse it for you.` },
+    { role: "agent", text: `Hi! I'm your **${agent.label}** agent. I use specialised tools to analyse your code deeply — ask me anything or hit a quick action.` },
   ]);
-  const [input, setInput]     = useState("");
+  const [input, setInput]       = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [applied, setApplied] = useState<Record<number, boolean>>({});
+  const [thinking, setThinking]   = useState(false);
+  const [applied, setApplied]   = useState<Record<number, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -203,6 +204,7 @@ function AgentChat({
     setInput("");
     setChat((c) => [...c, { role: "user", text }]);
     setStreaming(true);
+    setThinking(true);
     setChat((c) => [...c, { role: "agent", text: "" }]);
 
     const history = chat
@@ -238,11 +240,14 @@ function AgentChat({
           if (line.startsWith("data:")) {
             try {
               const d = JSON.parse(line.slice(5).trim());
-              if (d.text) setChat((c) => {
-                const next = [...c];
-                next[next.length - 1] = { ...next[next.length - 1], text: next[next.length - 1].text + d.text };
-                return next;
-              });
+              if (d.text) {
+                setThinking(false);
+                setChat((c) => {
+                  const next = [...c];
+                  next[next.length - 1] = { ...next[next.length - 1], text: next[next.length - 1].text + d.text };
+                  return next;
+                });
+              }
             } catch {}
           }
         }
@@ -257,6 +262,7 @@ function AgentChat({
       }
     } finally {
       setStreaming(false);
+      setThinking(false);
     }
   }, [input, streaming, chat, agent.id, fileName, fileContent, workspaceId]);
 
@@ -312,9 +318,16 @@ function AgentChat({
                   {isUser ? "ME" : <Icon className="h-3 w-3" />}
                 </div>
                 <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${isUser ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
+                  {/* Thinking indicator while agent runs tools */}
+                  {!isUser && thinking && i === chat.length - 1 && !m.text && (
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Running analysis tools…</span>
+                    </div>
+                  )}
                   <div className="prose prose-invert prose-xs max-w-none [&_code]:text-[11px] [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:max-h-40 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_ul]:my-1">
                     <ReactMarkdown>
-                      {m.text || (streaming && i === chat.length - 1 ? "▍" : "")}
+                      {m.text || (streaming && !thinking && i === chat.length - 1 ? "▍" : "")}
                     </ReactMarkdown>
                   </div>
                   {block && (
@@ -473,7 +486,7 @@ function EditorPage() {
       
       toast.success("Files saved successfully", { id: toastId });
     } catch (err: any) {
-      toast.error(err.message || "Failed to save files");
+      toast.error(err.message || "Failed to save files", { id: toastId });
     }
   };
 
@@ -729,7 +742,15 @@ function EditorPage() {
                       </TabsList>
                     </div>
                     <TabsContent value="terminal" className="m-0 flex-1 overflow-hidden">
-                      <Terminal sandboxId={selectedProject?.id} />
+                      <Terminal
+                        sandboxId={selectedProject?.id}
+                        dirtyPaths={dirtyPaths}
+                        modifiedFiles={{
+                          ...contents,
+                          // sentinel so Terminal can show the real remote URL
+                          ...(selectedProject?.repo_url ? { "__repoUrl__": selectedProject.repo_url } : {}),
+                        }}
+                      />
                     </TabsContent>
                     <TabsContent value="problems" className="m-0 flex-1 overflow-auto p-3 text-xs space-y-1">
                       <div className="flex items-start gap-2 rounded p-1.5 hover:bg-muted/30">
