@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, CheckCircle2, GitPullRequest, MessageSquare, Rocket, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,52 +9,53 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { fetchApi } from "@/lib/api/client";
 import { toast } from "sonner";
+import { useNotifStore, notifTypeIcon } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/notifications")({
   head: () => ({ meta: [{ title: "Notifications — DevReview AI" }] }),
   component: NotificationsPage,
 });
 
-const typeIcon: Record<string, any> = {
-  review: ShieldAlert, pr: GitPullRequest, devops: Rocket, agent: Bot,
-  success: CheckCircle2, comment: MessageSquare, alert: AlertTriangle,
-};
-
 function NotificationsPage() {
-  const [items, setItems] = useState<any[]>([]);
+  // ── Shared store (kept in sync by the global WS bootstrap) ──
+  const items = useNotifStore((s) => s.items);
+  const markReadStore = useNotifStore((s) => s.markRead);
+  const markAllReadStore = useNotifStore((s) => s.markAllRead);
+
   const [prefs, setPrefs] = useState<any>({});
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
+  const navigate = useNavigate();
 
-  const load = async () => {
-    try {
-      const [notifRes, prefRes] = await Promise.all([
-        fetchApi("/notifications"),
-        fetchApi("/notifications/preferences"),
-      ]);
-      setItems(notifRes?.notifications ?? []);
-      setPrefs(prefRes?.preferences ?? {});
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+  // Load preferences once on mount
+  useEffect(() => {
+    setLoadingPrefs(true);
+    fetchApi("/notifications/preferences")
+      .then((r) => setPrefs(r?.preferences ?? {}))
+      .catch((e) => toast.error(e?.message ?? "Failed to load preferences"))
+      .finally(() => setLoadingPrefs(false));
+  }, []);
 
   const markAllRead = async () => {
     try {
       await fetchApi("/notifications/read-all", { method: "POST" });
+      markAllReadStore();
       toast.success("All marked as read");
-      load();
     } catch (err: any) {
       toast.error(err.message);
     }
   };
 
-  const markRead = async (id: string) => {
+  const openNotification = async (notification: any) => {
     try {
-      await fetchApi(`/notifications/${id}/read`, { method: "POST" });
-      setItems((prev) => prev.map((n) => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
-    } catch {}
+      if (!notification.read_at) {
+        await fetchApi(`/notifications/${notification.id}/read`, { method: "POST" });
+        markReadStore(notification.id);
+      }
+      if (notification.link) navigate({ to: notification.link });
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update notification");
+    }
   };
 
   const savePrefs = async (key: string, value: boolean) => {
@@ -81,13 +82,37 @@ function NotificationsPage() {
     { key: "push_weekly_report", label: "Product updates", desc: "New features and announcements" },
   ];
 
+  const NotifCard = ({ n }: { n: any }) => {
+    const Icon = notifTypeIcon[n.type] ?? AlertTriangle;
+    return (
+      <Card
+        className={`glass flex cursor-pointer items-start gap-3 p-4 transition hover:border-primary/30 ${!n.read_at ? "border-l-2 border-l-primary" : ""}`}
+        onClick={() => openNotification(n)}
+      >
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${!n.read_at ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className={`text-sm ${!n.read_at ? "font-semibold" : "font-medium"}`}>{n.title}</div>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {new Date(n.created_at).toLocaleString()}
+            </span>
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{n.body}</div>
+        </div>
+        {!n.read_at && <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+      </Card>
+    );
+  };
+
   return (
     <div>
       <PageHeader
         eyebrow="Inbox"
         title="Notifications"
         description="All activity from your projects, agents, and integrations."
-        actions={<Button variant="outline" onClick={markAllRead}>Mark all as read</Button>}
+        actions={<Button variant="outline" onClick={markAllRead} disabled={items.length === 0}>Mark all as read</Button>}
       />
 
       <div className="p-6">
@@ -106,30 +131,7 @@ function NotificationsPage() {
                 <p className="mt-1 text-sm text-muted-foreground">No notifications yet.</p>
               </Card>
             )}
-            {items.map((n) => {
-              const Icon = typeIcon[n.type] ?? AlertTriangle;
-              return (
-                <Card
-                  key={n.id}
-                  className={`glass flex cursor-pointer items-start gap-3 p-4 transition hover:border-primary/30 ${!n.read_at ? "border-l-2 border-l-primary" : ""}`}
-                  onClick={() => !n.read_at && markRead(n.id)}
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium">{n.title}</div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {new Date(n.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">{n.body}</div>
-                  </div>
-                  {!n.read_at && <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
-                </Card>
-              );
-            })}
+            {items.map((n) => <NotifCard key={n.id} n={n} />)}
           </TabsContent>
 
           <TabsContent value="unread" className="mt-4 space-y-2">
@@ -139,15 +141,7 @@ function NotificationsPage() {
                 <h3 className="mt-3 font-display text-base font-semibold">No unread notifications</h3>
               </Card>
             )}
-            {unread.map((n) => {
-              const Icon = typeIcon[n.type] ?? AlertTriangle;
-              return (
-                <Card key={n.id} className="glass flex cursor-pointer items-start gap-3 border-l-2 border-l-primary p-4" onClick={() => markRead(n.id)}>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div>
-                  <div className="flex-1"><div className="text-sm font-medium">{n.title}</div><div className="text-xs text-muted-foreground">{n.body}</div></div>
-                </Card>
-              );
-            })}
+            {unread.map((n) => <NotifCard key={n.id} n={n} />)}
           </TabsContent>
 
           <TabsContent value="preferences" className="mt-4">
@@ -160,7 +154,7 @@ function NotificationsPage() {
                   </div>
                   <Switch
                     checked={!!prefs[p.key]}
-                    disabled={savingPrefs}
+                    disabled={savingPrefs || loadingPrefs}
                     onCheckedChange={(v) => savePrefs(p.key, v)}
                   />
                 </div>

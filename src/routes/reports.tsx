@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
 import { fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
@@ -20,12 +21,20 @@ const tooltip = { background: "var(--color-popover)", border: "1px solid var(--c
 function Reports() {
   const { workspaceId } = useAuthStore();
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspaceId) return;
+    setLoading(true);
+    setError(null);
     fetchApi("/analytics/reports", {}, workspaceId)
       .then(setData)
-      .catch(console.error);
+      .catch((err) => {
+        console.error(err);
+        setError(err.message || "Failed to load reports");
+      })
+      .finally(() => setLoading(false));
   }, [workspaceId]);
 
   const reviewTrend = (data?.reviewTrend ?? []).map((r: any) => ({ ...r, month: r.month?.slice(5) ?? r.month }));
@@ -36,6 +45,18 @@ function Reports() {
   return (
     <div>
       <PageHeader eyebrow="Analytics" title="Reports" description="Org-wide insights across reviews, security, quality, and agent usage." />
+      {error && (
+        <div className="px-6 pt-6">
+          <Card className="glass border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            {error}
+          </Card>
+        </div>
+      )}
+      {loading && (
+        <div className="px-6 pt-6">
+          <Badge variant="outline" className="border-primary/40 text-primary">Loading reports...</Badge>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2">
         <Card className="glass p-5">
           <h3 className="mb-3 font-display font-semibold">Review Trends (12 months)</h3>

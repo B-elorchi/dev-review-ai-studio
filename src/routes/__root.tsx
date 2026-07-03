@@ -11,6 +11,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TopNav } from "@/components/top-nav";
 import { Toaster } from "@/components/ui/sonner";
+import { useNotificationsProvider } from "@/hooks/use-notifications";
 
 function NotFoundComponent() {
   return (
@@ -87,6 +88,12 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Mounts the global WS listener + toast dispatcher — renders nothing */
+function NotificationsBootstrap() {
+  useNotificationsProvider();
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const path = useRouterState({ select: (r) => r.location.pathname });
@@ -118,6 +125,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
+        <NotificationsBootstrap />
         <div className="flex min-h-screen w-full">
           <AppSidebar />
           <div className="flex min-w-0 flex-1 flex-col">
