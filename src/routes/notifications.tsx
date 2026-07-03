@@ -1,13 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, CheckCircle2, GitPullRequest, MessageSquare, Rocket, ShieldAlert } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Bot, CheckCircle2, FolderKanban, GitPullRequest, MessageSquare, Rocket, ShieldAlert, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { fetchApi } from "@/lib/api/client";
+import { API_BASE, fetchApi } from "@/lib/api/client";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/notifications")({
@@ -17,15 +17,18 @@ export const Route = createFileRoute("/notifications")({
 
 const typeIcon: Record<string, any> = {
   review: ShieldAlert, pr: GitPullRequest, devops: Rocket, agent: Bot,
-  success: CheckCircle2, comment: MessageSquare, alert: AlertTriangle,
+  project: FolderKanban, team: Users, success: CheckCircle2, comment: MessageSquare, alert: AlertTriangle,
 };
 
 function NotificationsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [prefs, setPrefs] = useState<any>({});
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const reconnectTimer = useRef<number | null>(null);
 
-  const load = async () => {
+  const load = async (showError = true) => {
     try {
       const [notifRes, prefRes] = await Promise.all([
         fetchApi("/notifications"),
@@ -33,12 +36,52 @@ function NotificationsPage() {
       ]);
       setItems(notifRes?.notifications ?? []);
       setPrefs(prefRes?.preferences ?? {});
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (showError) toast.error(err.message ?? "Failed to load notifications");
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+
+    let shouldReconnect = true;
+    const connect = () => {
+      const token = localStorage.getItem("token");
+      if (!token) return undefined;
+
+      const wsUrl = new URL("notifications/ws", `${API_BASE.replace(/\/$/, "")}/`);
+      wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+      wsUrl.searchParams.set("token", token);
+
+      const socket = new WebSocket(wsUrl.toString());
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type !== "notification" || !message.notification) return;
+          setItems((prev) => {
+            if (prev.some((item) => item.id === message.notification.id)) return prev;
+            return [message.notification, ...prev];
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      socket.onclose = () => {
+        reconnectTimer.current = window.setTimeout(connect, 3_000);
+      };
+
+      return socket;
+    };
+
+    const socket = connect();
+    return () => {
+      if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current);
+      socket?.close();
+    };
+  }, []);
 
   const markAllRead = async () => {
     try {
@@ -50,11 +93,16 @@ function NotificationsPage() {
     }
   };
 
-  const markRead = async (id: string) => {
+  const openNotification = async (notification: any) => {
     try {
-      await fetchApi(`/notifications/${id}/read`, { method: "POST" });
-      setItems((prev) => prev.map((n) => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
-    } catch {}
+      if (!notification.read_at) {
+        await fetchApi(`/notifications/${notification.id}/read`, { method: "POST" });
+        setItems((prev) => prev.map((n) => n.id === notification.id ? { ...n, read_at: new Date().toISOString() } : n));
+      }
+      if (notification.link) navigate({ to: notification.link });
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update notification");
+    }
   };
 
   const savePrefs = async (key: string, value: boolean) => {
@@ -87,7 +135,7 @@ function NotificationsPage() {
         eyebrow="Inbox"
         title="Notifications"
         description="All activity from your projects, agents, and integrations."
-        actions={<Button variant="outline" onClick={markAllRead}>Mark all as read</Button>}
+        actions={<Button variant="outline" onClick={markAllRead} disabled={items.length === 0}>Mark all as read</Button>}
       />
 
       <div className="p-6">
@@ -99,7 +147,12 @@ function NotificationsPage() {
           </TabsList>
 
           <TabsContent value="all" className="mt-4 space-y-2">
-            {items.length === 0 && (
+            {loading && items.length === 0 && (
+              <Card className="glass flex flex-col items-center justify-center p-12 text-center">
+                <h3 className="font-display text-base font-semibold">Loading notifications</h3>
+              </Card>
+            )}
+            {!loading && items.length === 0 && (
               <Card className="glass flex flex-col items-center justify-center p-12 text-center">
                 <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
                 <h3 className="mt-3 font-display text-base font-semibold">All caught up</h3>
@@ -112,7 +165,7 @@ function NotificationsPage() {
                 <Card
                   key={n.id}
                   className={`glass flex cursor-pointer items-start gap-3 p-4 transition hover:border-primary/30 ${!n.read_at ? "border-l-2 border-l-primary" : ""}`}
-                  onClick={() => !n.read_at && markRead(n.id)}
+                  onClick={() => openNotification(n)}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Icon className="h-4 w-4" />
@@ -142,7 +195,7 @@ function NotificationsPage() {
             {unread.map((n) => {
               const Icon = typeIcon[n.type] ?? AlertTriangle;
               return (
-                <Card key={n.id} className="glass flex cursor-pointer items-start gap-3 border-l-2 border-l-primary p-4" onClick={() => markRead(n.id)}>
+                <Card key={n.id} className="glass flex cursor-pointer items-start gap-3 border-l-2 border-l-primary p-4" onClick={() => openNotification(n)}>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div>
                   <div className="flex-1"><div className="text-sm font-medium">{n.title}</div><div className="text-xs text-muted-foreground">{n.body}</div></div>
                 </Card>
