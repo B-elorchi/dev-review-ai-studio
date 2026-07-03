@@ -41,7 +41,7 @@ function AuthPage() {
         method: "POST",
         body: JSON.stringify({ email, password })
       });
-      useAuthStore.getState().setAuth(data.session?.access_token);
+      useAuthStore.getState().setAuth(data.session?.access_token, data.session?.refresh_token);
       await useAuthStore.getState().loadSession();
       router.navigate({ to: "/" });
     } catch (err: any) {
