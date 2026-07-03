@@ -4,6 +4,7 @@ import {
   ChevronRight, ChevronDown, File, Folder, FolderOpen, X, Terminal as TerminalIcon,
   Send, Bot, Shield, Zap, Lock, Wrench, ArrowLeft, Play, GitCommit,
   ChevronDown as ChevDown, Loader2, Circle,
+  Container, Boxes, Workflow, Cloud, FolderDown, Copy, CheckCircle2,
 } from "lucide-react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
@@ -36,13 +37,14 @@ type FNode = {
 
 type Tab = { path: string; lang: string };
 type ChatMsg = { role: "user" | "agent"; text: string };
-type AgentType = "code-review" | "code-quality" | "security" | "dev";
+type AgentType = "code-review" | "code-quality" | "security" | "dev" | "devops";
 
 const AGENTS: { id: AgentType; label: string; icon: any; color: string; placeholder: string }[] = [
-  { id: "code-review",  label: "Code Review",  icon: Shield, color: "from-blue-500 to-cyan-500",     placeholder: "Ask about bugs, anti-patterns, edge cases…" },
-  { id: "code-quality", label: "Quality",       icon: Zap,    color: "from-purple-500 to-pink-500",   placeholder: "Ask about complexity, maintainability, SOLID…" },
-  { id: "security",     label: "Security",      icon: Lock,   color: "from-rose-500 to-orange-500",   placeholder: "Ask about vulnerabilities, OWASP, secrets…" },
-  { id: "dev",          label: "DevOps",        icon: Wrench, color: "from-emerald-500 to-teal-500",  placeholder: "Ask about Docker, CI/CD, Kubernetes, IaC…" },
+  { id: "code-review", label: "Code Review", icon: Shield, color: "from-blue-500 to-cyan-500", placeholder: "Ask about bugs, anti-patterns, edge cases…" },
+  { id: "code-quality", label: "Quality", icon: Zap, color: "from-purple-500 to-pink-500", placeholder: "Ask about complexity, maintainability, SOLID…" },
+  { id: "security", label: "Security", icon: Lock, color: "from-rose-500 to-orange-500", placeholder: "Ask about vulnerabilities, OWASP, secrets…" },
+  { id: "dev", label: "DevOps", icon: Wrench, color: "from-emerald-500 to-teal-500", placeholder: "Ask about Docker, CI/CD, Kubernetes, IaC…" },
+  { id: "devops", label: "Generate", icon: Container, color: "from-rose-500 to-pink-600", placeholder: "" },
 ];
 
 // ─── file tree component ──────────────────────────────────────────────────────
@@ -166,7 +168,7 @@ function AgentChat({
                   return next;
                 });
               }
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -240,6 +242,288 @@ function AgentChat({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+type DevOpsFile = { lang: string; content: string };
+type DevOpsGenerated = Record<string, DevOpsFile>;
+
+const DEVOPS_FILE_ICONS: Record<string, any> = {
+  Dockerfile: Container,
+  "docker-compose.yml": Boxes,
+  ".github/workflows/ci.yml": Workflow,
+  "k8s/deployment.yaml": Cloud,
+  "k8s/service.yaml": Cloud,
+};
+
+function DevOpsPanel({
+  projectId, projectRepoUrl, workspaceId,
+}: {
+  projectId: string;
+  projectRepoUrl?: string;
+  workspaceId: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState<DevOpsGenerated>({});
+  const [active, setActive] = useState("");
+  const [pushing, setPushing] = useState(false);
+  const [commitMsg, setCommitMsg] = useState("chore: add AI-generated DevOps configuration");
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const hasRepo = !!projectRepoUrl;
+  const hasFiles = Object.keys(generated).length > 0;
+
+  useEffect(() => {
+    logRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logLines]);
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setGenerated({});
+    setLogLines([]);
+    abortRef.current = new AbortController();
+
+    try {
+      const token = localStorage.getItem("token");
+      const resp = await fetch(`${API_BASE}/devops/generate`, {
+        method: "POST",
+        signal: abortRef.current.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-workspace-id": workspaceId,
+        },
+        body: JSON.stringify({
+          projectId,
+          targets: ["dockerfile", "docker-compose", "github-actions"],
+        }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error("Stream failed");
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let deltaBuffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            try {
+              const d = JSON.parse(line.slice(5).trim());
+              if (d.text !== undefined) {
+                deltaBuffer += d.text;
+                const visible = deltaBuffer.split("\n").filter((l) => l.trim().length > 0);
+                setLogLines(visible.slice(-15));
+              }
+              if (d.generated) {
+                const files = d.generated as DevOpsGenerated;
+                setGenerated(files);
+                const first = Object.keys(files)[0] ?? "";
+                setActive(first);
+                toast.success(`Generated ${Object.keys(files).length} DevOps file(s)!`);
+              }
+            } catch { }
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") toast.error("Generation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    const file = generated[active];
+    if (!file) return;
+    navigator.clipboard.writeText(file.content);
+    toast.success("Copied to clipboard");
+  };
+
+  const handleDownload = () => {
+    Object.entries(generated).forEach(([name, file]) => {
+      const blob = new Blob([file.content], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name.split("/").pop() ?? name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+    toast.success(`Downloaded ${Object.keys(generated).length} file(s)`);
+  };
+
+  const handlePush = async () => {
+    if (!hasRepo || !commitMsg.trim()) return;
+    setPushing(true);
+    try {
+      const files = Object.entries(generated).map(([path, f]) => ({ path, content: f.content }));
+      const result = await fetchApi("/devops/push", {
+        method: "POST",
+        body: JSON.stringify({ projectId, files, message: commitMsg }),
+      }, workspaceId);
+      const failed = (result.results ?? []).filter((r: any) => r.status === "failed");
+      if (failed.length === 0) {
+        toast.success(`Pushed ${files.length} file(s) to ${result.branch}`);
+      } else {
+        toast.error(`${failed.length} file(s) failed to push`);
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Push failed");
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-lg">
+          <Container className="h-4 w-4" />
+        </div>
+        <div>
+          <div className="text-sm font-semibold">DevOps Generator</div>
+          <div className="text-xs text-muted-foreground">
+            {hasRepo ? "GitHub repo detected — AI uses your file tree" : "No GitHub repo linked"}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* Generate button */}
+        {!hasFiles && !loading && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Click below to generate a <strong>Dockerfile</strong>, <strong>docker-compose.yml</strong>, and <strong>GitHub Actions CI/CD</strong> workflow tailored to this project's tech stack.
+              {hasRepo && " Your repository files will be used as context for better accuracy."}
+            </p>
+            <Button
+              id="devops-generate-btn"
+              className="w-full bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-lg gap-2"
+              onClick={handleGenerate}
+            >
+              <Container className="h-4 w-4" />
+              Generate DevOps Configs
+            </Button>
+          </div>
+        )}
+
+        {/* Streaming log */}
+        {loading && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              AI is generating DevOps configuration…
+            </div>
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-border/60 bg-[#0e1320] p-3 font-mono text-[10px]">
+              {logLines.map((l, i) => (
+                <div key={i} className="text-emerald-400 leading-relaxed">{l}</div>
+              ))}
+              <div ref={logRef} />
+            </div>
+            <Button variant="ghost" size="sm" className="w-full" onClick={() => { abortRef.current?.abort(); setLoading(false); }}>
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {/* Generated file list */}
+        {hasFiles && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {Object.keys(generated).length} files generated
+            </div>
+            {Object.keys(generated).map((name) => {
+              const Icon = DEVOPS_FILE_ICONS[name] ?? File;
+              return (
+                <button
+                  key={name}
+                  onClick={() => setActive(name)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/50
+                    ${active === name ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1 truncate text-left font-mono">{name}</span>
+                  <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                </button>
+              );
+            })}
+
+            {/* Actions */}
+            <div className="flex gap-1.5 pt-1">
+              <Button id="devops-copy-btn" variant="outline" size="sm" className="flex-1 h-7 gap-1 text-[11px]" onClick={handleCopy}>
+                <Copy className="h-3 w-3" />Copy
+              </Button>
+              <Button id="devops-download-btn" variant="outline" size="sm" className="flex-1 h-7 gap-1 text-[11px]" onClick={handleDownload}>
+                <FolderDown className="h-3 w-3" />Download
+              </Button>
+            </div>
+
+            {/* Push to GitHub */}
+            {hasRepo && (
+              <div className="space-y-1.5 border-t border-border/60 pt-3">
+                <input
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
+                  placeholder="Commit message…"
+                  value={commitMsg}
+                  onChange={(e) => setCommitMsg(e.target.value)}
+                />
+                <Button
+                  id="devops-push-btn"
+                  size="sm"
+                  className="w-full h-7 bg-gradient-to-r from-primary to-accent text-xs gap-1.5"
+                  onClick={handlePush}
+                  disabled={pushing || !commitMsg.trim()}
+                >
+                  {pushing ? <><Loader2 className="h-3 w-3 animate-spin" />Pushing…</> : <><GitCommit className="h-3 w-3" />Push to GitHub</>}
+                </Button>
+              </div>
+            )}
+
+            {!hasRepo && (
+              <p className="text-[10px] text-muted-foreground text-center py-1">
+                Link a GitHub repo to enable push
+              </p>
+            )}
+
+            <Button
+              id="devops-regenerate-btn"
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs"
+              onClick={handleGenerate}
+              disabled={loading}
+            >
+              ↺ Regenerate
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {hasFiles && active && generated[active] && (
+        <div className="border-t border-border/60">
+          <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-muted-foreground">
+            <span className="font-mono">{active}</span>
+            <Button variant="ghost" size="sm" className="h-5 text-[10px] px-2" onClick={handleCopy}>
+              <Copy className="h-2.5 w-2.5 mr-1" />copy
+            </Button>
+          </div>
+          <div className="h-40 border-t border-border/30">
+            <CodeEditor value={generated[active].content} language={generated[active].lang} readOnly />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -602,7 +886,7 @@ function Workspace() {
           <div className="flex h-full flex-col border-l border-border/60 bg-sidebar/50">
             <Tabs value={agentTab} onValueChange={(v) => setAgentTab(v as AgentType)} className="flex h-full flex-col">
               <div className="border-b border-border/60 p-2">
-                <TabsList className="grid w-full grid-cols-4 bg-muted/30">
+                <TabsList className="grid w-full grid-cols-5 bg-muted/30">
                   {AGENTS.map((a) => (
                     <TabsTrigger key={a.id} value={a.id} className="gap-1 text-[11px]">
                       <a.icon className="h-3 w-3" />
@@ -611,7 +895,7 @@ function Workspace() {
                   ))}
                 </TabsList>
               </div>
-              {workspaceId && AGENTS.map((a) => (
+              {workspaceId && AGENTS.filter((a) => a.id !== "devops").map((a) => (
                 <TabsContent key={a.id} value={a.id} className="m-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
                   <AgentChat
                     agentDef={a}
@@ -621,6 +905,15 @@ function Workspace() {
                   />
                 </TabsContent>
               ))}
+              {workspaceId && (
+                <TabsContent value="devops" className="m-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+                  <DevOpsPanel
+                    projectId={id}
+                    projectRepoUrl={project?.repo_url}
+                    workspaceId={workspaceId}
+                  />
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         </ResizablePanel>

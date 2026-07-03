@@ -3,34 +3,64 @@ import { API_BASE } from "./api/client";
 
 interface AuthState {
   user: any | null;
-  session: { access_token: string } | null;
+  session: { access_token: string; refresh_token?: string } | null;
   profile: any | null;
   workspaceId: string | null;
-  setAuth: (token: string | null) => void;
+  setAuth: (token: string | null, refreshToken?: string) => void;
   signOut: () => void;
   loadSession: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
   profile: null,
   workspaceId: typeof window !== "undefined" ? localStorage.getItem("workspaceId") : null,
-  setAuth: (token) => {
+  setAuth: (token, refreshToken) => {
     if (token) {
       localStorage.setItem("token", token);
-      set({ session: { access_token: token } });
+      if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
+      set({ session: { access_token: token, refresh_token: refreshToken } });
     } else {
       localStorage.removeItem("token");
+      localStorage.removeItem("refresh_token");
       localStorage.removeItem("workspaceId");
       set({ session: null, user: null, profile: null, workspaceId: null });
     }
   },
   signOut: () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("workspaceId");
     set({ session: null, user: null, profile: null, workspaceId: null });
     window.location.href = "/auth";
+  },
+  refreshSession: async () => {
+    if (typeof window === "undefined") return false;
+    const refreshToken = localStorage.getItem("refresh_token");
+    if (!refreshToken) return false;
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      
+      if (!response.ok) throw new Error("Refresh failed");
+      const data = await response.json();
+      
+      localStorage.setItem("token", data.session.access_token);
+      if (data.session.refresh_token) {
+        localStorage.setItem("refresh_token", data.session.refresh_token);
+      }
+      set({ session: data.session, user: data.user });
+      return true;
+    } catch {
+      get().signOut();
+      return false;
+    }
   },
   loadSession: async () => {
     if (typeof window === "undefined") return;
@@ -39,13 +69,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     const isPasswordReset = window.location.pathname.startsWith("/update-password");
     const queryToken = isPasswordReset ? null : params.get("token");
     let token = queryToken || localStorage.getItem("token");
+    let refreshToken = params.get("refresh_token") || localStorage.getItem("refresh_token");
 
     if (token) {
       if (queryToken) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
       localStorage.setItem("token", token);
-      set({ session: { access_token: token } });
+      if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
+      set({ session: { access_token: token, refresh_token: refreshToken || undefined } });
 
       try {
         const response = await fetch(`${API_BASE}/auth/session`, {
@@ -55,9 +87,21 @@ export const useAuthStore = create<AuthState>((set) => ({
             "Authorization": `Bearer ${token}`,
           },
         });
-        if (!response.ok) throw new Error("Invalid session");
-        const data = await response.json();
-        set({ user: data.user, profile: data.profile });
+        
+        // If unauthorized, try to refresh
+        if (response.status === 401 && refreshToken) {
+          const refreshed = await get().refreshSession();
+          if (!refreshed) throw new Error("Invalid session");
+          // Re-fetch profile and workspace with new token handled by refreshSession
+          token = localStorage.getItem("token")!; 
+        } else if (!response.ok) {
+          throw new Error("Invalid session");
+        }
+        
+        if (response.ok) {
+           const data = await response.json();
+           set({ user: data.user, profile: data.profile });
+        }
 
         // Load workspace — prefer stored, else fetch first available
         let wsId = localStorage.getItem("workspaceId");
@@ -73,9 +117,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
         set({ workspaceId: wsId });
       } catch {
-        localStorage.removeItem("token");
-        localStorage.removeItem("workspaceId");
-        set({ session: null, user: null, profile: null, workspaceId: null });
+        get().signOut();
       }
     }
   },
