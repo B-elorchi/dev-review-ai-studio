@@ -28,6 +28,8 @@ function Dashboard() {
   const [data, setData] = useState<{ stats: any[], qualityTrend: any[], activity: any[] }>({ stats: [], qualityTrend: [], activity: [] });
   const [loading, setLoading] = useState(true);
   const workspaceId = useAuthStore((s) => s.workspaceId);
+  const profile = useAuthStore((s) => s.profile);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
     async function load() {
@@ -44,11 +46,13 @@ function Dashboard() {
     load();
   }, [workspaceId]);
 
+  const firstName = profile?.full_name?.split(" ")[0] || profile?.name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
+
   return (
     <div>
       <PageHeader
         eyebrow="Overview"
-        title="Welcome back, Jane"
+        title={`Welcome back, ${firstName}`}
         description="Here's what's happening across your engineering organization today."
         actions={
           <>
