@@ -128,7 +128,7 @@ function TeamPage() {
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
-              <option value="reviewer">Reviewer</option>
+              <option value="viewer">Viewer</option>
             </select>
             <Button onClick={invite} disabled={inviting}>
               <Plus className="mr-1.5 h-4 w-4" />{inviting ? "Sending…" : "Send invite"}

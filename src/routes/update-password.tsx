@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
+import { toast } from "sonner";
 
 type SearchParams = {
   token?: string;
@@ -30,7 +31,7 @@ function UpdatePasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password || !token) {
-      alert("Missing password or invalid token! Make sure you clicked the exact link from your email.");
+      toast.error("Missing password or invalid token. Use the exact link from your email.");
       return;
     }
 
@@ -45,10 +46,10 @@ function UpdatePasswordPage() {
         useAuthStore.getState().setAuth(data.session.access_token);
         await useAuthStore.getState().loadSession();
       }
-      alert("Password updated successfully!");
+      toast.success("Password updated successfully.");
       router.navigate({ to: "/" });
     } catch (err: any) {
-      alert(err.message || "Failed to update password");
+      toast.error(err.message || "Failed to update password");
     } finally {
       setLoading(false);
     }
