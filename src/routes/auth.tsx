@@ -1,12 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Github, Mail, Lock, User, Sparkles, ArrowRight, ShieldCheck, Zap, GitPullRequest } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-
+import { fetchApi } from "@/lib/api/client";
+import { useAuthStore } from "@/lib/auth-store";
+import { useRouter } from "@tanstack/react-router";
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Sign in — DevReview AI" }] }),
   component: AuthPage,
@@ -14,6 +16,73 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("error");
+    const errorDescription = params.get("error_description");
+    if (error) {
+      alert(`Login Error: ${errorDescription || error}`);
+      // Clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const data = await fetchApi("/auth/signin", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      useAuthStore.getState().setAuth(data.session?.access_token);
+      await useAuthStore.getState().loadSession();
+      router.navigate({ to: "/" });
+    } catch (err: any) {
+      alert(err.message || "Failed to sign in");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await fetchApi("/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email, password, full_name: name })
+      });
+      alert("Check your email for the confirmation link!");
+    } catch (err: any) {
+      alert(err.message || "Failed to sign up");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGithubLogin = async () => {
+    setLoading(true);
+    try {
+      const { url } = await fetchApi("/auth/github");
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error("No URL returned");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to start GitHub login");
+      setLoading(false);
+    }
+  };
+
+
 
   return (
     <div className="relative grid min-h-screen w-full lg:grid-cols-2">
@@ -89,7 +158,7 @@ function AuthPage() {
           </p>
 
           <div className="mt-6 grid gap-2">
-            <Button variant="outline" className="w-full justify-center gap-2">
+            <Button variant="outline" className="w-full justify-center gap-2" onClick={handleGithubLogin} disabled={loading}>
               <Github className="h-4 w-4" />Continue with GitHub
             </Button>
             <Button variant="outline" className="w-full justify-center gap-2">
@@ -111,23 +180,27 @@ function AuthPage() {
             </TabsList>
 
             <TabsContent value="signin" className="mt-5 space-y-4">
-              <Field id="email" label="Email" icon={Mail} type="email" placeholder="you@company.com" />
-              <Field id="password" label="Password" icon={Lock} type="password" placeholder="••••••••" rightSlot={<a href="#" className="text-xs text-primary hover:underline">Forgot?</a>} />
-              <Button className="w-full bg-gradient-to-r from-primary to-accent shadow-[0_0_20px_-4px_var(--primary)]">
-                Sign in <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <Field id="email" label="Email" icon={Mail} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Field id="password" label="Password" icon={Lock} type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} rightSlot={<Link to="/forgot-password" className="text-xs text-primary hover:underline">Forgot?</Link>} />
+                <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-primary to-accent shadow-[0_0_20px_-4px_var(--primary)]">
+                  {loading ? "Signing in..." : <>Sign in <ArrowRight className="ml-1.5 h-4 w-4" /></>}
+                </Button>
+              </form>
             </TabsContent>
 
             <TabsContent value="signup" className="mt-5 space-y-4">
-              <Field id="name" label="Full name" icon={User} placeholder="Jane Developer" />
-              <Field id="email" label="Work email" icon={Mail} type="email" placeholder="you@company.com" />
-              <Field id="password" label="Password" icon={Lock} type="password" placeholder="At least 8 characters" />
-              <Button className="w-full bg-gradient-to-r from-primary to-accent shadow-[0_0_20px_-4px_var(--primary)]">
-                Create account <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Button>
-              <p className="text-center text-[11px] text-muted-foreground">
-                By signing up you agree to our <a href="#" className="text-foreground hover:underline">Terms</a> and <a href="#" className="text-foreground hover:underline">Privacy Policy</a>.
-              </p>
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <Field id="name" label="Full name" icon={User} placeholder="Jane Developer" value={name} onChange={(e) => setName(e.target.value)} />
+                <Field id="email" label="Work email" icon={Mail} type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Field id="password" label="Password" icon={Lock} type="password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-primary to-accent shadow-[0_0_20px_-4px_var(--primary)]">
+                  {loading ? "Creating..." : <>Create account <ArrowRight className="ml-1.5 h-4 w-4" /></>}
+                </Button>
+                <p className="text-center text-[11px] text-muted-foreground">
+                  By signing up you agree to our <a href="#" className="text-foreground hover:underline">Terms</a> and <a href="#" className="text-foreground hover:underline">Privacy Policy</a>.
+                </p>
+              </form>
             </TabsContent>
           </Tabs>
         </div>
@@ -137,8 +210,8 @@ function AuthPage() {
 }
 
 function Field({
-  id, label, icon: Icon, type = "text", placeholder, rightSlot,
-}: { id: string; label: string; icon: React.ComponentType<{ className?: string }>; type?: string; placeholder?: string; rightSlot?: React.ReactNode }) {
+  id, label, icon: Icon, type = "text", placeholder, rightSlot, value, onChange
+}: { id: string; label: string; icon: React.ComponentType<{ className?: string }>; type?: string; placeholder?: string; rightSlot?: React.ReactNode; value?: string; onChange?: (e: any) => void }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -147,7 +220,7 @@ function Field({
       </div>
       <div className="relative">
         <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input id={id} type={type} placeholder={placeholder} className="pl-9" />
+        <Input id={id} type={type} placeholder={placeholder} className="pl-9" value={value} onChange={onChange} />
       </div>
     </div>
   );

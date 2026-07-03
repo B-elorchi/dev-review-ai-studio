@@ -1,4 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api/client";
+import { useAuthStore } from "@/lib/auth-store";
 import { GitPullRequest, GitMerge, CheckCircle2, XCircle, Clock, MessageSquare, Filter } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,13 +15,8 @@ export const Route = createFileRoute("/pull-requests")({
   component: PRPage,
 });
 
-const prs = [
-  { id: 142, repo: "acme/web", title: "feat(auth): migrate to passkey-based login flow", author: "JD", branch: "feat/passkeys", status: "open", score: 87, comments: 12, additions: 482, deletions: 191, time: "12 minutes ago" },
-  { id: 141, repo: "acme/api", title: "fix(billing): handle Stripe webhook race condition", author: "MK", branch: "fix/stripe-race", status: "review", score: 94, comments: 6, additions: 78, deletions: 24, time: "1 hour ago" },
-  { id: 139, repo: "acme/web", title: "chore: bump dependencies for June security advisory", author: "AR", branch: "chore/deps", status: "merged", score: 98, comments: 3, additions: 1244, deletions: 1188, time: "3 hours ago" },
-  { id: 138, repo: "acme/infra", title: "feat: add multi-region failover for Postgres", author: "SL", branch: "feat/failover", status: "open", score: 72, comments: 18, additions: 612, deletions: 47, time: "Yesterday" },
-  { id: 137, repo: "acme/mobile", title: "perf: lazy load heavy components on cold start", author: "PS", branch: "perf/lazy", status: "closed", score: 64, comments: 9, additions: 320, deletions: 410, time: "2 days ago" },
-];
+// We will fetch this from API instead
+// const prs = [];
 
 const statusMap = {
   open: { label: "Open", icon: GitPullRequest, cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" },
@@ -28,6 +26,30 @@ const statusMap = {
 } as const;
 
 function PRPage() {
+  const { workspaceId } = useAuthStore();
+  const [prs, setPrs] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({ open: 0, review: 0, merged: 0, closed: 0, avg_review_time: "—" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    async function load() {
+      try {
+        const [prRes, statsRes] = await Promise.all([
+          fetchApi("/pull-requests", {}, workspaceId ?? undefined),
+          fetchApi("/pull-requests/stats", {}, workspaceId ?? undefined),
+        ]);
+        setPrs(Array.isArray(prRes) ? prRes : prRes?.data ?? []);
+        if (statsRes?.stats) setStats(statsRes.stats);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [workspaceId]);
+
   return (
     <div>
       <PageHeader eyebrow="GitHub" title="Pull Requests" description="AI-reviewed PRs across all your repositories." />
@@ -35,10 +57,10 @@ function PRPage() {
       <div className="grid gap-4 p-6">
         <div className="grid gap-3 md:grid-cols-4">
           {[
-            { label: "Open", value: 14, color: "text-emerald-400" },
-            { label: "In review", value: 6, color: "text-amber-400" },
-            { label: "Merged this week", value: 38, color: "text-purple-400" },
-            { label: "Avg. review time", value: "27s", color: "text-primary" },
+            { label: "Open", value: stats.open, color: "text-emerald-400" },
+            { label: "In review", value: stats.review, color: "text-amber-400" },
+            { label: "Merged", value: stats.merged, color: "text-purple-400" },
+            { label: "Avg. review time", value: stats.avg_review_time, color: "text-primary" },
           ].map((s) => (
             <Card key={s.label} className="glass p-4">
               <div className="text-xs uppercase tracking-wider text-muted-foreground">{s.label}</div>
@@ -55,8 +77,11 @@ function PRPage() {
         </div>
 
         <Card className="glass divide-y divide-border/60 p-0">
+          {prs.length === 0 && !loading && (
+            <div className="p-8 text-center text-muted-foreground">No pull requests found.</div>
+          )}
           {prs.map((pr) => {
-            const S = statusMap[pr.status as keyof typeof statusMap];
+            const S = statusMap[pr.state as keyof typeof statusMap] || statusMap.open;
             return (
               <div key={pr.id} className="flex items-center gap-4 p-4 transition hover:bg-muted/20">
                 <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${S.cls.replace("border-", "").replace("text-", "text-")} bg-opacity-20`}>
@@ -70,12 +95,12 @@ function PRPage() {
                   </div>
                   <div className="mt-1 truncate text-sm font-medium">{pr.title}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <span className="font-mono">{pr.branch}</span>
+                    <span className="font-mono">{pr.head_sha?.substring(0, 7) || pr.branch}</span>
                     <span>•</span>
-                    <span className="text-emerald-400">+{pr.additions}</span>
-                    <span className="text-red-400">-{pr.deletions}</span>
+                    <span className="text-emerald-400">+{pr.additions || 0}</span>
+                    <span className="text-red-400">-{pr.deletions || 0}</span>
                     <span>•</span>
-                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />{pr.comments}</span>
+                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />{pr.comments || 0}</span>
                     <span>•</span>
                     <span>{pr.time}</span>
                   </div>
@@ -83,10 +108,10 @@ function PRPage() {
                 <div className="hidden items-center gap-4 md:flex">
                   <div className="text-right">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">AI score</div>
-                    <div className={`font-display text-lg font-bold ${pr.score >= 90 ? "text-emerald-400" : pr.score >= 75 ? "text-amber-400" : "text-red-400"}`}>{pr.score}</div>
+                    <div className={`font-display text-lg font-bold ${(pr.score || 0) >= 90 ? "text-emerald-400" : (pr.score || 0) >= 75 ? "text-amber-400" : "text-red-400"}`}>{pr.score || '-'}</div>
                   </div>
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-[11px] font-bold text-primary-foreground">{pr.author}</AvatarFallback>
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-[11px] font-bold text-primary-foreground">{pr.author?.substring(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                 </div>
               </div>

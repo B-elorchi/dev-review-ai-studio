@@ -4,8 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
-import { activity, qualityTrend, stats } from "@/lib/mock-data";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Dashboard — DevReview AI" }] }),
@@ -21,7 +22,28 @@ const severityClass: Record<string, string> = {
   warning: "bg-amber-500/10 text-amber-400 border-amber-500/30",
 };
 
+import { useAuthStore } from "@/lib/auth-store";
+
 function Dashboard() {
+  const [data, setData] = useState<{ stats: any[], qualityTrend: any[], activity: any[] }>({ stats: [], qualityTrend: [], activity: [] });
+  const [loading, setLoading] = useState(true);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+
+  useEffect(() => {
+    async function load() {
+      if (!workspaceId) return;
+      try {
+        const res = await fetchApi("/analytics/dashboard", {}, workspaceId);
+        if (res) setData(res);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [workspaceId]);
+
   return (
     <div>
       <PageHeader
@@ -41,7 +63,7 @@ function Dashboard() {
       <div className="space-y-6 p-6">
         {/* Stats */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((s) => {
+          {data.stats.map((s) => {
             const Icon = iconMap[s.icon as keyof typeof iconMap];
             return (
               <Card key={s.label} className="glass relative overflow-hidden p-5 transition-all hover:border-primary/40">
@@ -79,7 +101,7 @@ function Dashboard() {
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={qualityTrend}>
+                <AreaChart data={data.qualityTrend}>
                   <defs>
                     <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.5} />
@@ -106,7 +128,7 @@ function Dashboard() {
             <h3 className="font-display text-lg font-semibold">Recent Activity</h3>
             <p className="mb-4 text-xs text-muted-foreground">Latest actions across your workspace</p>
             <div className="space-y-3">
-              {activity.map((a, i) => {
+              {data.activity.map((a, i) => {
                 const Icon = activityIcon[a.type as keyof typeof activityIcon] ?? ShieldAlert;
                 return (
                   <div key={i} className="flex gap-3">

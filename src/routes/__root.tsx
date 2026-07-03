@@ -3,6 +3,7 @@ import {
   Outlet, Link, createRootRouteWithContext, useRouter, useRouterState, HeadContent, Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -89,7 +90,21 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const path = useRouterState({ select: (r) => r.location.pathname });
-  const isFullScreen = path === "/auth" || path === "/onboarding";
+  const isFullScreen = path === "/auth" || path === "/onboarding" || path === "/forgot-password" || path.startsWith("/update-password");
+  const navigate = useRouter().navigate;
+  const session = useAuthStore((s) => s.session);
+
+  useEffect(() => {
+    // Wait a brief moment to allow Supabase to restore the session from local storage.
+    // In a production app, we'd check `supabase.auth.getSession()` directly before rendering.
+    const timer = setTimeout(() => {
+      const currentSession = useAuthStore.getState().session;
+      if (!currentSession && !isFullScreen) {
+        navigate({ to: "/auth" });
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [session, isFullScreen, navigate]);
 
   if (isFullScreen) {
     return (

@@ -7,88 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/page-header";
 import { CodeEditor } from "@/components/code-editor";
+import { fetchApi } from "@/lib/api/client";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/devops")({
   head: () => ({ meta: [{ title: "DevOps Generator — DevReview AI" }] }),
   component: DevOps,
 });
 
-const generated = {
-  Dockerfile: { lang: "dockerfile", content: `FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-EXPOSE 3000
-USER node
-CMD ["node", "dist/index.js"]
-` },
-  "docker-compose.yml": { lang: "yaml", content: `version: '3.9'
-services:
-  api:
-    build: .
-    ports: ["3000:3000"]
-    environment:
-      - DATABASE_URL=postgres://app:app@db:5432/app
-    depends_on: [db]
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    volumes: [pgdata:/var/lib/postgresql/data]
-volumes: { pgdata: {} }
-` },
-  "github-actions.yml": { lang: "yaml", content: `name: CI
-on: [push, pull_request]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - name: DevReview AI scan
-        uses: devreview/action@v1
-        with: { token: \${{ secrets.DEVREVIEW_TOKEN }} }
-` },
-  "k8s-deployment.yaml": { lang: "yaml", content: `apiVersion: apps/v1
-kind: Deployment
-metadata: { name: auth-service }
-spec:
-  replicas: 3
-  selector: { matchLabels: { app: auth-service } }
-  template:
-    metadata: { labels: { app: auth-service } }
-    spec:
-      containers:
-        - name: api
-          image: ghcr.io/acme/auth-service:latest
-          ports: [{ containerPort: 3000 }]
-          resources:
-            limits: { cpu: "500m", memory: "512Mi" }
-` },
-  "k8s-service.yaml": { lang: "yaml", content: `apiVersion: v1
-kind: Service
-metadata: { name: auth-service }
-spec:
-  type: ClusterIP
-  selector: { app: auth-service }
-  ports:
-    - port: 80
-      targetPort: 3000
-` },
-};
+// Generated mock object removed from here
 
 const fileIcons = {
   Dockerfile: Container,
@@ -100,7 +27,27 @@ const fileIcons = {
 
 function DevOps() {
   const [step, setStep] = useState(1);
-  const [active, setActive] = useState<keyof typeof generated>("Dockerfile");
+  const [active, setActive] = useState<string>("Dockerfile");
+  const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState<Record<string, { lang: string, content: string }>>({});
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchApi("/devops/generate", {
+        method: "POST",
+        body: JSON.stringify({ stack: "Node", targets: ["dockerfile", "github-actions"] })
+      });
+      if (res?.generated) {
+        setGenerated(res.generated);
+        setStep(2);
+      }
+    } catch (err: any) {
+      toast.error("Failed to generate DevOps assets");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -144,8 +91,8 @@ function DevOps() {
               ))}
             </div>
             <div className="mt-6 flex justify-end">
-              <Button onClick={() => setStep(2)} className="bg-gradient-to-r from-primary to-accent text-primary-foreground">
-                <Sparkles className="mr-1.5 h-4 w-4" />Generate
+              <Button onClick={handleGenerate} disabled={loading} className="bg-gradient-to-r from-primary to-accent text-primary-foreground">
+                <Sparkles className="mr-1.5 h-4 w-4" />{loading ? "Generating..." : "Generate"}
               </Button>
             </div>
           </Card>
@@ -156,7 +103,7 @@ function DevOps() {
               {Object.keys(generated).map((name) => {
                 const Icon = fileIcons[name as keyof typeof fileIcons] ?? FileCode;
                 return (
-                  <button key={name} onClick={() => setActive(name as keyof typeof generated)}
+                  <button key={name} onClick={() => setActive(name)}
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted/50 ${active === name ? "bg-primary/15 text-primary" : ""}`}>
                     <Icon className="h-4 w-4" />
                     <span className="truncate">{name}</span>
@@ -170,7 +117,9 @@ function DevOps() {
                 <Button variant="ghost" size="sm"><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
               </div>
               <div className="h-[520px]">
-                <CodeEditor value={generated[active].content} language={generated[active].lang} readOnly />
+                {generated[active] && (
+                  <CodeEditor value={generated[active].content} language={generated[active].lang} readOnly />
+                )}
               </div>
             </Card>
           </div>

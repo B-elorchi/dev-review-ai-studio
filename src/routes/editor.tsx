@@ -1,22 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
-  Bot, Check, ChevronRight, File, FileCode, FilePlus, Folder, FolderOpen, GitBranch,
-  Loader2, Play, Save, Search, Send, Settings as SettingsIcon, Sparkles, Square,
-  Terminal as TerminalIcon, X, Circle, ChevronDown, Wand2, Command,
+  Bot, Check, ChevronDown, ChevronRight, Circle, File, FileCode, FilePlus,
+  Folder, FolderOpen, GitBranch, Loader2, Lock, Play, Save, Search,
+  Send, Settings as SettingsIcon, Shield, Square, Sparkles,
+  Terminal as TerminalIcon, Wand2, Wrench, X, Zap,
 } from "lucide-react";
 import { CodeEditor } from "@/components/code-editor";
+import { Terminal } from "@/components/Terminal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  ResizableHandle, ResizablePanel, ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { API_BASE, fetchApi } from "@/lib/api/client";
+import { useAuthStore } from "@/lib/auth-store";
 
 export const Route = createFileRoute("/editor")({
   ssr: false,
@@ -24,42 +27,80 @@ export const Route = createFileRoute("/editor")({
   component: EditorPage,
 });
 
-type FileNode = {
-  name: string;
-  type: "file" | "folder";
-  lang?: string;
-  children?: FileNode[];
-  content?: string;
-};
+// ─── types ────────────────────────────────────────────────────────────────────
 
-const tree: FileNode[] = [
+type FileNode = { name: string; type: "file" | "folder"; lang?: string; children?: FileNode[]; content?: string };
+type ChatMsg  = { role: "user" | "agent"; text: string };
+type AgentId  = "code-review" | "code-quality" | "security" | "dev";
+
+const AGENTS: { id: AgentId; label: string; icon: any; color: string; placeholder: string }[] = [
+  { id: "code-review",  label: "Code Review", icon: Shield, color: "from-blue-500 to-cyan-500",    placeholder: "Ask about bugs, anti-patterns, edge cases…" },
+  { id: "code-quality", label: "Quality",     icon: Zap,    color: "from-purple-500 to-pink-500",  placeholder: "Ask about complexity, maintainability, SOLID…" },
+  { id: "security",     label: "Security",    icon: Lock,   color: "from-rose-500 to-orange-500",  placeholder: "Ask about OWASP, secrets, injection risks…" },
+  { id: "dev",          label: "DevOps",      icon: Wrench, color: "from-emerald-500 to-teal-500", placeholder: "Ask about Docker, CI/CD, Terraform, K8s…" },
+];
+
+// ─── demo fallback tree ───────────────────────────────────────────────────────
+
+const DEMO_TREE: FileNode[] = [
   {
     name: "src", type: "folder", children: [
       {
         name: "components", type: "folder", children: [
-          { name: "Button.tsx", type: "file", lang: "typescript", content: `import { forwardRef, type ButtonHTMLAttributes } from "react";\nimport { cn } from "@/lib/utils";\n\ntype Props = ButtonHTMLAttributes<HTMLButtonElement> & {\n  variant?: "primary" | "ghost";\n};\n\nexport const Button = forwardRef<HTMLButtonElement, Props>(\n  ({ className, variant = "primary", ...props }, ref) => (\n    <button\n      ref={ref}\n      className={cn(\n        "rounded-md px-4 py-2 text-sm font-medium transition",\n        variant === "primary" && "bg-primary text-primary-foreground",\n        variant === "ghost" && "hover:bg-muted",\n        className,\n      )}\n      {...props}\n    />\n  ),\n);\nButton.displayName = "Button";\n` },
-          { name: "Card.tsx", type: "file", lang: "typescript", content: `export function Card({ children }: { children: React.ReactNode }) {\n  return <div className="rounded-xl border bg-card p-6">{children}</div>;\n}\n` },
+          {
+            name: "Button.tsx", type: "file", lang: "typescript",
+            content: `import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { cn } from "@/lib/utils";
+
+type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "ghost";
+};
+
+export const Button = forwardRef<HTMLButtonElement, Props>(
+  ({ className, variant = "primary", ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(
+        "rounded-md px-4 py-2 text-sm font-medium transition",
+        variant === "primary" && "bg-primary text-primary-foreground",
+        variant === "ghost" && "hover:bg-muted",
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+Button.displayName = "Button";
+`,
+          },
         ],
       },
       {
-        name: "lib", type: "folder", children: [
-          { name: "utils.ts", type: "file", lang: "typescript", content: `import { clsx, type ClassValue } from "clsx";\nimport { twMerge } from "tailwind-merge";\n\nexport function cn(...inputs: ClassValue[]) {\n  return twMerge(clsx(inputs));\n}\n` },
-          { name: "api.ts", type: "file", lang: "typescript", content: `const BASE = "https://api.devreview.ai/v1";\n\nexport async function fetchReviews(repo: string) {\n  const res = await fetch(\`\${BASE}/reviews?repo=\${repo}\`);\n  if (!res.ok) throw new Error("Failed to load reviews");\n  return res.json();\n}\n` },
-        ],
+        name: "App.tsx", type: "file", lang: "typescript",
+        content: `import { Button } from "./components/Button";
+
+export default function App() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold">DevReview Editor</h1>
+        <p className="mt-2 text-muted-foreground">Code with your AI agents.</p>
+        <Button className="mt-6">Get started</Button>
+      </div>
+    </main>
+  );
+}
+`,
       },
-      { name: "App.tsx", type: "file", lang: "typescript", content: `import { Button } from "./components/Button";\n\nexport default function App() {\n  return (\n    <main className="flex min-h-screen items-center justify-center bg-background">\n      <div className="text-center">\n        <h1 className="text-4xl font-bold">DevReview Editor</h1>\n        <p className="mt-2 text-muted-foreground">Code with your AI pair-programmer.</p>\n        <Button className="mt-6">Get started</Button>\n      </div>\n    </main>\n  );\n}\n` },
-      { name: "main.tsx", type: "file", lang: "typescript", content: `import { createRoot } from "react-dom/client";\nimport App from "./App";\nimport "./styles.css";\n\ncreateRoot(document.getElementById("root")!).render(<App />);\n` },
     ],
   },
   {
-    name: "public", type: "folder", children: [
-      { name: "favicon.svg", type: "file", lang: "xml", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#5b8cff"/></svg>` },
-    ],
+    name: "package.json", type: "file", lang: "json",
+    content: `{\n  "name": "devreview-app",\n  "version": "1.0.0",\n  "scripts": { "dev": "vite", "build": "vite build" },\n  "dependencies": { "react": "^19.0.0" }\n}\n`,
   },
-  { name: "package.json", type: "file", lang: "json", content: `{\n  "name": "devreview-app",\n  "version": "1.0.0",\n  "scripts": {\n    "dev": "vite",\n    "build": "vite build",\n    "lint": "eslint ."\n  },\n  "dependencies": {\n    "react": "^19.0.0",\n    "react-dom": "^19.0.0"\n  }\n}\n` },
-  { name: "README.md", type: "file", lang: "markdown", content: `# DevReview App\n\nA demo project edited inside the DevReview AI online IDE.\n\n## Getting started\n\n\`\`\`bash\nbun install\nbun dev\n\`\`\`\n` },
-  { name: ".gitignore", type: "file", lang: "plaintext", content: `node_modules\ndist\n.env\n.DS_Store\n` },
 ];
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function flatten(nodes: FileNode[], path = ""): { path: string; node: FileNode }[] {
   return nodes.flatMap((n) => {
@@ -70,435 +111,708 @@ function flatten(nodes: FileNode[], path = ""): { path: string; node: FileNode }
   });
 }
 
-const allFiles = flatten(tree).filter((f) => f.node.type === "file");
+function injectContent(nodes: FileNode[], samples: Record<string, { lang: string; content: string }>, prefix = ""): FileNode[] {
+  return nodes.map((n) => {
+    const path = prefix ? `${prefix}/${n.name}` : n.name;
+    if (n.type === "folder") return { ...n, children: injectContent(n.children ?? [], samples, path) };
+    const s = samples[path];
+    return s ? { ...n, lang: s.lang, content: s.content } : n;
+  });
+}
 
-function FileTree({
-  nodes, depth = 0, onOpen, openPath,
-}: { nodes: FileNode[]; depth?: number; onOpen: (path: string) => void; openPath: string }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ src: true, "src/components": true, "src/lib": true });
+function extractLastCodeBlock(text: string) {
+  const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  let last: { lang?: string; code: string } | null = null;
+  while ((m = re.exec(text)) !== null) last = { lang: m[1] || undefined, code: m[2] };
+  return last;
+}
+
+// ─── file tree ────────────────────────────────────────────────────────────────
+
+function FileTreeNode({
+  node, depth, parentPath, onOpen, activePath, dirtyPaths,
+}: {
+  node: FileNode; depth: number; parentPath: string;
+  onOpen: (path: string, node: FileNode) => void;
+  activePath: string; dirtyPaths: Set<string>;
+}) {
+  const [open, setOpen] = useState(depth < 1);
+  const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
+
+  if (node.type === "folder") {
+    return (
+      <div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-center gap-1 rounded py-1 pr-2 text-xs hover:bg-muted/50"
+          style={{ paddingLeft: depth * 12 + 6 }}
+        >
+          <ChevronRight className={`h-3 w-3 shrink-0 transition ${open ? "rotate-90" : ""}`} />
+          {open
+            ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+            : <Folder    className="h-3.5 w-3.5 shrink-0 text-sky-400" />}
+          <span className="min-w-0 flex-1 truncate text-left" title={node.name}>{node.name}</span>
+        </button>
+        {open && node.children?.map((c) => (
+          <FileTreeNode key={c.name} node={c} depth={depth + 1} parentPath={fullPath}
+            onOpen={onOpen} activePath={activePath} dirtyPaths={dirtyPaths} />
+        ))}
+      </div>
+    );
+  }
+
+  const isActive = activePath === fullPath;
+  return (
+    <button
+      onClick={() => onOpen(fullPath, node)}
+      title={fullPath}
+      className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-xs hover:bg-muted/50 ${isActive ? "bg-primary/15 text-primary" : ""}`}
+      style={{ paddingLeft: depth * 12 + 20 }}
+    >
+      <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-left">{node.name}</span>
+      {dirtyPaths.has(fullPath) && <Circle className="h-2 w-2 shrink-0 fill-amber-400 text-amber-400" />}
+    </button>
+  );
+}
+
+// ─── agent chat ───────────────────────────────────────────────────────────────
+
+function AgentChat({
+  agent, fileName, fileContent, workspaceId, onApply,
+}: {
+  agent: typeof AGENTS[number];
+  fileName: string; fileContent: string; workspaceId: string;
+  onApply: (code: string) => void;
+}) {
+  const [chat, setChat] = useState<ChatMsg[]>([
+    { role: "agent", text: `Hi! I'm your **${agent.label}** agent. Ask me anything about the current file or let me analyse it for you.` },
+  ]);
+  const [input, setInput]     = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [applied, setApplied] = useState<Record<number, boolean>>({});
+  const abortRef = useRef<AbortController | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chat]);
+
+  const send = useCallback(async (textOverride?: string) => {
+    const text = (textOverride ?? input).trim();
+    if (!text || streaming) return;
+    setInput("");
+    setChat((c) => [...c, { role: "user", text }]);
+    setStreaming(true);
+    setChat((c) => [...c, { role: "agent", text: "" }]);
+
+    const history = chat
+      .filter((m) => m.role === "user")
+      .map((m) => ({ role: "user" as const, content: m.text }));
+
+    abortRef.current = new AbortController();
+    try {
+      const token = localStorage.getItem("token");
+      const resp = await fetch(`${API_BASE}/ai/inline-chat`, {
+        method: "POST",
+        signal: abortRef.current.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-workspace-id": workspaceId,
+        },
+        body: JSON.stringify({ agentType: agent.id, message: text, fileName, fileContent, history }),
+      });
+
+      if (!resp.ok || !resp.body) throw new Error("Stream failed");
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            try {
+              const d = JSON.parse(line.slice(5).trim());
+              if (d.text) setChat((c) => {
+                const next = [...c];
+                next[next.length - 1] = { ...next[next.length - 1], text: next[next.length - 1].text + d.text };
+                return next;
+              });
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        setChat((c) => {
+          const next = [...c];
+          next[next.length - 1] = { role: "agent", text: "Something went wrong. Please try again." };
+          return next;
+        });
+      }
+    } finally {
+      setStreaming(false);
+    }
+  }, [input, streaming, chat, agent.id, fileName, fileContent, workspaceId]);
+
+  const Icon = agent.icon;
 
   return (
-    <div>
-      {nodes.map((n) => {
-        const fullPath = depth === 0 ? n.name : `${openPath}/${n.name}`;
-        if (n.type === "folder") {
-          const isOpen = expanded[n.name] ?? false;
-          return (
-            <div key={n.name}>
-              <button
-                onClick={() => setExpanded({ ...expanded, [n.name]: !isOpen })}
-                className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-muted/50"
-                style={{ paddingLeft: depth * 12 + 6 }}
-              >
-                <ChevronRight className={`h-3 w-3 shrink-0 transition ${isOpen ? "rotate-90" : ""}`} />
-                {isOpen ? <FolderOpen className="h-3.5 w-3.5 text-sky-400" /> : <Folder className="h-3.5 w-3.5 text-sky-400" />}
-                <span className="truncate">{n.name}</span>
-              </button>
-              {isOpen && n.children && (
-                <FileTree nodes={n.children} depth={depth + 1} onOpen={onOpen} openPath={fullPath} />
-              )}
-            </div>
-          );
-        }
-        return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className={`flex items-center gap-2 border-b border-border/60 bg-gradient-to-r ${agent.color} bg-opacity-10 px-3 py-2`}>
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br ${agent.color} text-white shadow`}>
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+        <div>
+          <div className="text-xs font-semibold">{agent.label} Agent</div>
+          <div className="text-[10px] text-muted-foreground">
+            {fileName ? `Analysing ${fileName.split("/").pop()}` : "Ready"}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <span className="text-[10px] text-emerald-400">Live</span>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="flex flex-wrap gap-1 border-b border-border/60 p-2">
+        {[
+          { label: "Review file", prompt: "Review this file and list all issues you find, ordered by severity." },
+          { label: "Explain", prompt: "Explain what this file does and how it works." },
+          { label: "Refactor", prompt: "Refactor this file for better readability. Return the complete updated file in a code block." },
+          { label: "Fix bugs", prompt: "Find and fix any bugs. Return the complete fixed file in a code block." },
+        ].map((a) => (
           <button
-            key={n.name}
-            onClick={() => onOpen(fullPath)}
-            className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-muted/50"
-            style={{ paddingLeft: depth * 12 + 18 }}
+            key={a.label}
+            onClick={() => send(a.prompt)}
+            disabled={streaming}
+            className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-muted/50 disabled:opacity-40"
           >
-            <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{n.name}</span>
+            {a.label}
           </button>
-        );
-      })}
+        ))}
+      </div>
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 p-3">
+        <div className="space-y-3">
+          {chat.map((m, i) => {
+            const isUser = m.role === "user";
+            const block = !isUser ? extractLastCodeBlock(m.text) : null;
+            return (
+              <div key={i} className={`flex gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
+                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isUser ? "bg-muted text-[9px] font-bold" : `bg-gradient-to-br ${agent.color} text-white`}`}>
+                  {isUser ? "ME" : <Icon className="h-3 w-3" />}
+                </div>
+                <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${isUser ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
+                  <div className="prose prose-invert prose-xs max-w-none [&_code]:text-[11px] [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:max-h-40 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_ul]:my-1">
+                    <ReactMarkdown>
+                      {m.text || (streaming && i === chat.length - 1 ? "▍" : "")}
+                    </ReactMarkdown>
+                  </div>
+                  {block && (
+                    <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
+                      <span className="text-[10px] text-muted-foreground">
+                        {block.code.split("\n").length} lines · {block.lang ?? "code"}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant={applied[i] ? "outline" : "default"}
+                        disabled={applied[i]}
+                        onClick={() => { onApply(block.code); setApplied((s) => ({ ...s, [i]: true })); toast.success("Applied to editor"); }}
+                        className="h-5 gap-1 px-2 text-[10px]"
+                      >
+                        {applied[i] ? <><Check className="h-2.5 w-2.5" />Applied</> : <><Wand2 className="h-2.5 w-2.5" />Apply</>}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
+
+      {/* Input */}
+      <div className="border-t border-border/60 p-2">
+        <div className="flex items-end gap-2 rounded-lg border border-border bg-background p-2 focus-within:border-primary/50">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder={agent.placeholder}
+            className="max-h-24 min-h-[40px] flex-1 resize-none bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          />
+          {streaming
+            ? <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={() => abortRef.current?.abort()}><Square className="h-3 w-3" /></Button>
+            : <Button size="icon" className={`h-7 w-7 shrink-0 bg-gradient-to-r ${agent.color}`} disabled={!input.trim()} onClick={() => send()}><Send className="h-3 w-3" /></Button>
+          }
+        </div>
+      </div>
     </div>
   );
 }
 
-function findFile(path: string): FileNode | undefined {
-  return allFiles.find((f) => f.path === path)?.node;
-}
-
-function extractLastCodeBlock(text: string): { lang?: string; code: string } | null {
-  const re = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  let last: { lang?: string; code: string } | null = null;
-  while ((m = re.exec(text)) !== null) {
-    last = { lang: m[1] || undefined, code: m[2] };
-  }
-  return last;
-}
+// ─── main page ────────────────────────────────────────────────────────────────
 
 function EditorPage() {
-  const [openTabs, setOpenTabs] = useState<string[]>(["src/App.tsx", "src/components/Button.tsx", "package.json"]);
-  const [active, setActive] = useState("src/App.tsx");
-  // Per-path overridden contents (so AI edits + manual edits persist)
-  const [contents, setContents] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {};
-    for (const f of allFiles) init[f.path] = f.node.content ?? "";
-    return init;
+  const { workspaceId } = useAuthStore();
+
+  // Sidebar / activity bar
+  const [sidebarOpen, setSidebarOpen]   = useState(true);
+  const [activeBar, setActiveBar]       = useState<"explorer" | "search" | "git">("explorer");
+
+  // Projects
+  const [projects, setProjects]         = useState<any[]>([]);
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [loadingProject, setLoadingProject]   = useState(false);
+
+  // File tree
+  const [fileTree, setFileTree]         = useState<FileNode[]>(DEMO_TREE);
+  const [fileSource, setFileSource]     = useState<"demo" | "github" | "static">("demo");
+
+  // Editor state
+  const [openTabs, setOpenTabs]         = useState<string[]>(["src/App.tsx"]);
+  const [active, setActive]             = useState("src/App.tsx");
+  const [contents, setContents]         = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const { path, node } of flatten(DEMO_TREE)) if (node.content !== undefined) m[path] = node.content;
+    return m;
   });
-  const [input, setInput] = useState("");
-  const [appliedIds, setAppliedIds] = useState<Record<string, boolean>>({});
+  const [originals, setOriginals]       = useState<Record<string, string>>({});
 
-  const activeFile = findFile(active);
-  const activeContent = contents[active] ?? activeFile?.content ?? "";
-  const activeLang = activeFile?.lang ?? "plaintext";
+  const allFiles    = flatten(fileTree).filter((f) => f.node.type === "file");
+  const activeNode  = allFiles.find((f) => f.path === active)?.node;
+  const activeContent = contents[active] ?? activeNode?.content ?? "";
+  const activeLang    = activeNode?.lang ?? "plaintext";
 
-  // Keep a ref so transport prepareSendMessagesRequest always sees latest context
-  const ctxRef = useRef({ active, activeContent, activeLang });
-  useEffect(() => {
-    ctxRef.current = { active, activeContent, activeLang };
-  }, [active, activeContent, activeLang]);
-
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/editor-chat",
-        prepareSendMessagesRequest: ({ messages, body }) => ({
-          body: {
-            ...body,
-            messages,
-            fileName: ctxRef.current.active,
-            fileLang: ctxRef.current.activeLang,
-            fileContent: ctxRef.current.activeContent,
-          },
-        }),
-      }),
-    [],
+  const dirtyPaths = new Set(
+    Object.entries(contents).filter(([p, c]) => originals[p] !== undefined && c !== originals[p]).map(([p]) => p),
   );
 
-  const { messages, sendMessage, status, stop, error } = useChat({
-    transport,
-    onError: (e) => toast.error(e.message || "AI request failed"),
-  });
-
-  const isLoading = status === "submitted" || status === "streaming";
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Load projects on mount
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, isLoading]);
+    if (!workspaceId) return;
+    fetchApi("/projects", {}, workspaceId)
+      .then((d) => setProjects(d.projects ?? []))
+      .catch(console.error);
+  }, [workspaceId]);
 
-  const openFile = (path: string) => {
+  // Select a project → fetch files
+  const selectProject = async (p: any) => {
+    if (!workspaceId) return;
+    setSelectedProject(p);
+    setLoadingProject(true);
+    try {
+      const fData = await fetchApi(`/projects/${p.id}/files`, {}, workspaceId);
+      const tree  = injectContent(fData.fileTree ?? DEMO_TREE, fData.sampleFiles ?? {});
+      setFileTree(tree);
+      setFileSource(fData.source === "github" ? "github" : "static");
+
+      const newC: Record<string, string> = {};
+      const newO: Record<string, string> = {};
+      for (const { path, node } of flatten(tree)) {
+        if (node.type === "file" && node.content !== undefined) { newC[path] = node.content; newO[path] = node.content; }
+      }
+      setContents(newC);
+      setOriginals(newO);
+
+      const first = flatten(tree).find((f) => f.node.type === "file");
+      if (first) { setOpenTabs([first.path]); setActive(first.path); }
+
+      toast.success(`Loaded ${p.name}${fData.source === "github" ? " from GitHub" : ""}`);
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to load project files");
+    } finally {
+      setLoadingProject(false);
+    }
+  };
+
+  const openFile = (path: string, node: FileNode) => {
     if (!openTabs.includes(path)) setOpenTabs([...openTabs, path]);
     setActive(path);
+    if (contents[path] === undefined && node.content !== undefined) {
+      setContents((c) => ({ ...c, [path]: node.content! }));
+      setOriginals((o) => ({ ...o, [path]: node.content! }));
+    }
   };
+
   const closeTab = (path: string) => {
     const next = openTabs.filter((t) => t !== path);
     setOpenTabs(next);
     if (active === path && next.length) setActive(next[next.length - 1]);
   };
-  const send = (textOverride?: string) => {
-    const text = (textOverride ?? input).trim();
-    if (!text || isLoading) return;
-    sendMessage({ text });
-    setInput("");
-  };
-  const applyCode = (msgId: string, code: string) => {
-    setContents((c) => ({ ...c, [active]: code }));
-    setAppliedIds((s) => ({ ...s, [msgId]: true }));
-    toast.success(`Applied changes to ${active.split("/").pop()}`);
+
+  const handleSave = async () => {
+    if (!selectedProject || dirtyPaths.size === 0) return;
+    
+    try {
+      const toastId = toast.loading(`Saving ${dirtyPaths.size} file(s)...`);
+      
+      for (const path of Array.from(dirtyPaths)) {
+        await fetchApi(`/editor/sandboxes/${selectedProject.id}/files`, {
+          method: "PUT",
+          body: JSON.stringify({ path, content: contents[path] })
+        }, workspaceId!);
+      }
+      
+      // Update originals to clear dirty state
+      const newOriginals = { ...originals };
+      for (const path of Array.from(dirtyPaths)) {
+        newOriginals[path] = contents[path];
+      }
+      setOriginals(newOriginals);
+      
+      toast.success("Files saved successfully", { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save files");
+    }
   };
 
-  const quickActions: { label: string; icon: typeof Bot; prompt: string }[] = [
-    { label: "Explain", icon: Bot, prompt: "Explain what this file does, its structure, and any non-obvious behavior. Do not modify the code." },
-    { label: "Refactor", icon: Wand2, prompt: "Refactor this file for readability and maintainability. Return the full updated file." },
-    { label: "Fix bugs", icon: Circle, prompt: "Find and fix any bugs or potential issues in this file. Return the full updated file." },
-    { label: "Add tests", icon: FileCode, prompt: "Add tests for this file. If the file itself is the code, write a test file's full contents instead." },
-  ];
+  const toggleSidebar = (bar: typeof activeBar) => {
+    if (activeBar === bar && sidebarOpen) { setSidebarOpen(false); return; }
+    setActiveBar(bar);
+    setSidebarOpen(true);
+  };
+
+  const projectLabel = selectedProject?.name ?? "Demo project";
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-[#0a0d18]">
-      {/* Editor toolbar */}
+
+      {/* ── Toolbar ─────────────────────────────────────────────────── */}
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background/40 px-3 backdrop-blur-xl">
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-primary to-accent text-[10px] font-bold text-primary-foreground">D</span>
-          <span className="font-medium">devreview-app</span>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-1.5 rounded px-2 py-1 text-xs hover:bg-muted/50">
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-primary to-accent text-[10px] font-bold text-primary-foreground">
+                {projectLabel[0]?.toUpperCase() ?? "D"}
+              </span>
+              <span className="font-medium">{projectLabel}</span>
+              {loadingProject && <Loader2 className="h-3 w-3 animate-spin" />}
+              {!loadingProject && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Projects</div>
+            {projects.map((p) => (
+              <DropdownMenuItem key={p.id} onClick={() => selectProject(p)}
+                className={selectedProject?.id === p.id ? "bg-primary/10 font-medium" : ""}>
+                {p.name}
+                {p.repo_url && <span className="ml-auto text-[10px] text-muted-foreground">GitHub</span>}
+              </DropdownMenuItem>
+            ))}
+            {projects.length === 0 && <div className="px-2 py-2 text-xs text-muted-foreground">No projects found.</div>}
+            <div className="my-1 border-t border-border/60" />
+            <DropdownMenuItem className="text-muted-foreground" onClick={() => {
+              setSelectedProject(null); setFileTree(DEMO_TREE); setFileSource("demo");
+              const m: Record<string, string> = {};
+              for (const { path, node } of flatten(DEMO_TREE)) if (node.content !== undefined) m[path] = node.content;
+              setContents(m); setOriginals({}); setOpenTabs(["src/App.tsx"]); setActive("src/App.tsx");
+            }}>Demo project</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <span className="text-muted-foreground">/</span>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <GitBranch className="h-3 w-3" /><span>main</span>
-          <Badge variant="outline" className="ml-1 h-4 border-emerald-500/30 bg-emerald-500/10 px-1 text-[9px] text-emerald-400">synced</Badge>
+          {fileSource === "github" && (
+            <Badge variant="outline" className="ml-1 h-4 border-emerald-500/30 bg-emerald-500/10 px-1 text-[9px] text-emerald-400">synced</Badge>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"><Save className="h-3 w-3" />Save</Button>
-          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"><Play className="h-3 w-3" />Run</Button>
-          <Button size="sm" className="h-7 gap-1.5 bg-gradient-to-r from-primary to-accent text-xs">
-            <Sparkles className="h-3 w-3" />Ask AI
-            <kbd className="ml-1 rounded bg-black/30 px-1 text-[9px]"><Command className="inline h-2.5 w-2.5" />K</kbd>
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs"
+            onClick={handleSave}
+            disabled={dirtyPaths.size === 0}>
+            <Save className="h-3 w-3" />Save
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs">
+            <Play className="h-3 w-3" />Run
           </Button>
         </div>
       </div>
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        {/* Activity bar */}
+      {/* ── Body: activity bar + resizable panels ───────────────────── */}
+      <div className="flex min-h-0 flex-1">
+
+        {/* Activity bar — SIBLING of ResizablePanelGroup, never inside it */}
         <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-border/60 bg-background/30 py-2">
-          {[
-            { icon: File, active: true }, { icon: Search }, { icon: GitBranch },
-            { icon: Bot }, { icon: SettingsIcon },
-          ].map((b, i) => (
-            <button key={i} className={`flex h-9 w-9 items-center justify-center rounded ${b.active ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"}`}>
+          {([
+            { id: "explorer" as const, icon: File,    title: "Explorer" },
+            { id: "search"   as const, icon: Search,  title: "Search" },
+            { id: "git"      as const, icon: GitBranch, title: "Source Control" },
+          ]).map((b) => (
+            <button
+              key={b.id}
+              title={b.title}
+              onClick={() => toggleSidebar(b.id)}
+              className={`flex h-9 w-9 items-center justify-center rounded transition ${
+                activeBar === b.id && sidebarOpen
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              }`}
+            >
               <b.icon className="h-4 w-4" />
             </button>
           ))}
+          <div className="my-1 h-px w-8 bg-border/60" />
+          <button
+            title="AI Agents"
+            onClick={() => toast.info("AI agents are in the right panel →")}
+            className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          >
+            <Sparkles className="h-4 w-4" />
+          </button>
+          <button
+            title="Settings"
+            className="mt-auto flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </button>
         </div>
 
-        {/* Explorer */}
-        <ResizablePanel defaultSize={16} minSize={12} maxSize={28}>
-          <div className="flex h-full flex-col bg-background/20">
-            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Explorer</span>
-              <div className="flex gap-0.5">
-                <Button size="icon" variant="ghost" className="h-5 w-5"><FilePlus className="h-3 w-3" /></Button>
-                <Button size="icon" variant="ghost" className="h-5 w-5"><Folder className="h-3 w-3" /></Button>
-              </div>
-            </div>
-            <ScrollArea className="flex-1 p-1.5">
-              <div className="mb-2 px-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">devreview-app</div>
-              <FileTree nodes={tree} onOpen={openFile} openPath="" />
-            </ScrollArea>
-            <div className="border-t border-border/60 p-2 text-[10px] text-muted-foreground">
-              <div className="flex items-center justify-between"><span>3 changes</span><span className="flex items-center gap-1"><Circle className="h-2 w-2 fill-emerald-400 text-emerald-400" />main</span></div>
-            </div>
-          </div>
-        </ResizablePanel>
+        {/* Everything else is resizable panels */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
 
-        <ResizableHandle />
-
-        {/* Editor + terminal */}
-        <ResizablePanel defaultSize={56}>
-          <ResizablePanelGroup orientation="vertical">
-            <ResizablePanel defaultSize={70} minSize={30}>
-              <div className="flex h-full flex-col">
-                {/* Tabs */}
-                <div className="flex h-9 shrink-0 items-center border-b border-border/60 bg-background/20">
-                  {openTabs.map((t) => {
-                    const isActive = t === active;
-                    const name = t.split("/").pop();
-                    return (
-                      <button
-                        key={t}
-                        onClick={() => setActive(t)}
-                        className={`group flex h-full items-center gap-2 border-r border-border/60 px-3 text-xs transition ${isActive ? "bg-[#0e1320] text-foreground" : "text-muted-foreground hover:bg-muted/30"}`}
-                      >
-                        <FileCode className="h-3 w-3" />
-                        <span>{name}</span>
-                        <X
-                          className="h-3 w-3 opacity-0 transition hover:text-foreground group-hover:opacity-60"
-                          onClick={(e) => { e.stopPropagation(); closeTab(t); }}
-                        />
-                        {isActive && <span className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-primary to-accent" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Breadcrumb */}
-                <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border/60 bg-background/10 px-3 text-[11px] text-muted-foreground">
-                  {active.split("/").map((s, i, arr) => (
-                    <span key={i} className="flex items-center gap-1">
-                      {i > 0 && <ChevronRight className="h-3 w-3" />}
-                      <span className={i === arr.length - 1 ? "text-foreground" : ""}>{s}</span>
+          {/* Explorer sidebar — only rendered when open */}
+          {sidebarOpen && (
+            <>
+              <ResizablePanel id="sidebar" defaultSize={18} minSize={10}>
+                <div className="flex h-full flex-col bg-background/20">
+                  <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {activeBar === "explorer" ? "Explorer" : activeBar === "search" ? "Search" : "Source Control"}
                     </span>
-                  ))}
-                </div>
-                {/* Monaco */}
-                <div className="flex-1 min-h-0">
-                  {activeFile ? (
-                    <CodeEditor
-                      value={activeContent}
-                      language={activeLang}
-                      onChange={(v) => setContents((c) => ({ ...c, [active]: v }))}
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Select a file to start editing</div>
-                  )}
-                </div>
-              </div>
-            </ResizablePanel>
-
-            <ResizableHandle />
-
-            <ResizablePanel defaultSize={30} minSize={12}>
-              <div className="flex h-full flex-col bg-[#06080f]">
-                <Tabs defaultValue="terminal" className="flex h-full flex-col">
-                  <div className="flex h-8 shrink-0 items-center border-b border-border/60 px-2">
-                    <TabsList className="h-7 bg-transparent">
-                      <TabsTrigger value="terminal" className="h-6 gap-1.5 text-xs"><TerminalIcon className="h-3 w-3" />Terminal</TabsTrigger>
-                      <TabsTrigger value="problems" className="h-6 gap-1.5 text-xs">Problems <Badge variant="secondary" className="ml-1 h-4 px-1 text-[9px]">2</Badge></TabsTrigger>
-                      <TabsTrigger value="output" className="h-6 text-xs">Output</TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <TabsContent value="terminal" className="flex-1 m-0 overflow-auto p-3 font-mono text-[12px] leading-relaxed">
-                    <div className="text-emerald-400">jane@devreview <span className="text-sky-400">~/devreview-app</span> $ <span className="text-foreground">bun dev</span></div>
-                    <div className="text-muted-foreground">  Vite v7.0.0  ready in <span className="text-foreground">312 ms</span></div>
-                    <div className="text-muted-foreground">  ➜  Local:   <span className="text-sky-400">http://localhost:5173/</span></div>
-                    <div className="text-muted-foreground">  ➜  Network: use --host to expose</div>
-                    <div className="mt-2 text-emerald-400">jane@devreview <span className="text-sky-400">~/devreview-app</span> $ <span className="text-foreground">git status</span></div>
-                    <div className="text-muted-foreground">On branch <span className="text-emerald-400">main</span></div>
-                    <div className="text-muted-foreground">Changes not staged for commit:</div>
-                    <div className="text-amber-400">  modified:   src/App.tsx</div>
-                    <div className="text-amber-400">  modified:   src/components/Button.tsx</div>
-                    <div className="text-emerald-400">  new file:   src/lib/api.ts</div>
-                    <div className="mt-2 text-emerald-400">jane@devreview <span className="text-sky-400">~/devreview-app</span> $ <span className="inline-block h-3.5 w-1.5 animate-pulse bg-foreground align-middle" /></div>
-                  </TabsContent>
-                  <TabsContent value="problems" className="flex-1 m-0 overflow-auto p-3 text-xs">
-                    <div className="flex items-start gap-2 rounded p-1.5 hover:bg-muted/30">
-                      <Circle className="mt-0.5 h-3 w-3 fill-amber-400 text-amber-400" />
-                      <div><div>Unused variable 'config'</div><div className="text-[10px] text-muted-foreground">src/lib/api.ts:4 • ts(6133)</div></div>
-                    </div>
-                    <div className="flex items-start gap-2 rounded p-1.5 hover:bg-muted/30">
-                      <Circle className="mt-0.5 h-3 w-3 fill-red-400 text-red-400" />
-                      <div><div>Cannot find name 'fetchUser'</div><div className="text-[10px] text-muted-foreground">src/App.tsx:12 • ts(2304)</div></div>
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="output" className="flex-1 m-0 overflow-auto p-3 font-mono text-xs text-muted-foreground">
-                    [Vite] hmr update /src/App.tsx<br />
-                    [Vite] page reload src/components/Button.tsx
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </ResizablePanel>
-
-        <ResizableHandle />
-
-        {/* AI assistant (Cursor-style) */}
-        <ResizablePanel defaultSize={28} minSize={20} maxSize={45}>
-          <div className="flex h-full flex-col border-l border-border/60 bg-background/40 backdrop-blur-xl">
-            <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/60 px-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-primary to-accent">
-                  <Sparkles className="h-3 w-3 text-primary-foreground" />
-                </div>
-                <span className="text-sm font-medium">AI Composer</span>
-                <Badge variant="outline" className="h-4 px-1 text-[9px]">GPT-5</Badge>
-              </div>
-              <Button size="icon" variant="ghost" className="h-6 w-6"><SettingsIcon className="h-3 w-3" /></Button>
-            </div>
-
-            {/* Quick actions */}
-            <div className="grid grid-cols-2 gap-1.5 border-b border-border/60 p-2">
-              {quickActions.map((q) => (
-                <Button
-                  key={q.label}
-                  variant="outline"
-                  size="sm"
-                  disabled={isLoading}
-                  onClick={() => send(q.prompt)}
-                  className="h-7 justify-start gap-1.5 text-[11px]"
-                >
-                  <q.icon className="h-3 w-3" />{q.label}
-                </Button>
-              ))}
-            </div>
-
-            {/* Chat */}
-            <div ref={scrollRef} className="flex-1 overflow-auto p-3">
-              <div className="mb-3 rounded-lg border border-border bg-muted/30 p-2 text-[10px] text-muted-foreground">
-                Context: <code className="text-foreground">{active}</code> · {activeContent.split("\n").length} lines
-              </div>
-              {messages.length === 0 && !isLoading && (
-                <div className="rounded-lg border border-dashed border-border/60 p-3 text-xs text-muted-foreground">
-                  Hi! I&apos;m your AI pair-programmer. Ask me to <span className="text-foreground">refactor</span>, <span className="text-foreground">explain</span>, or <span className="text-foreground">generate code</span> for the current file. When I propose changes, hit <span className="text-foreground">Apply</span> to write them into the editor.
-                </div>
-              )}
-              <div className="space-y-3">
-                {messages.map((m) => {
-                  const text = m.parts
-                    .map((p) => (p.type === "text" ? p.text : ""))
-                    .join("");
-                  const codeBlock = m.role === "assistant" ? extractLastCodeBlock(text) : null;
-                  const applied = appliedIds[m.id];
-                  return (
-                    <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${m.role === "user" ? "bg-muted" : "bg-gradient-to-br from-primary to-accent"}`}>
-                        {m.role === "user" ? <span className="text-[9px] font-bold">JD</span> : <Bot className="h-3 w-3 text-white" />}
+                    {activeBar === "explorer" && (
+                      <div className="flex gap-0.5">
+                        <Button size="icon" variant="ghost" className="h-5 w-5"><FilePlus className="h-3 w-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5"><Folder className="h-3 w-3" /></Button>
                       </div>
-                      <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
-                        <div className="prose prose-invert prose-xs max-w-none [&_pre]:my-1.5 [&_pre]:max-h-48 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_code]:text-[11px] [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1">
-                          <ReactMarkdown>{text || (m.role === "assistant" && isLoading ? "…" : "")}</ReactMarkdown>
-                        </div>
-                        {codeBlock && (
-                          <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-1.5">
-                            <span className="truncate text-[10px] text-muted-foreground">
-                              {codeBlock.code.split("\n").length} lines · {codeBlock.lang ?? activeLang}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant={applied ? "outline" : "default"}
-                              disabled={applied}
-                              onClick={() => applyCode(m.id, codeBlock.code)}
-                              className="h-6 gap-1 px-2 text-[10px]"
-                            >
-                              {applied ? <><Check className="h-3 w-3" />Applied</> : <><Wand2 className="h-3 w-3" />Apply to {active.split("/").pop()}</>}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {isLoading && messages[messages.length - 1]?.role === "user" && (
-                  <div className="flex gap-2">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary to-accent">
-                      <Bot className="h-3 w-3 text-white" />
-                    </div>
-                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />Thinking…
-                    </div>
+                    )}
                   </div>
-                )}
-                {error && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
-                    {error.message}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Composer */}
-            <div className="border-t border-border/60 p-2">
-              <div className="rounded-lg border border-border bg-background p-2 focus-within:border-primary/50">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                  placeholder="Ask, edit, generate… (⌘K)"
-                  className="h-14 w-full resize-none bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-                />
-                <div className="flex items-center justify-between border-t border-border/60 pt-2">
-                  <div className="flex gap-1">
-                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@{active.split("/").pop()}</Badge>
-                    <Badge variant="outline" className="h-5 cursor-pointer px-1.5 text-[9px]">@docs</Badge>
-                  </div>
-                  {isLoading ? (
-                    <Button size="icon" onClick={() => stop()} variant="outline" className="h-6 w-6">
-                      <Square className="h-3 w-3" />
-                    </Button>
-                  ) : (
-                    <Button size="icon" onClick={() => send()} disabled={!input.trim()} className="h-6 w-6 bg-gradient-to-r from-primary to-accent">
-                      <Send className="h-3 w-3" />
-                    </Button>
+                  {activeBar === "explorer" && (
+                    <ScrollArea className="flex-1 p-1.5">
+                      <div className="mb-2 px-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {projectLabel}
+                      </div>
+                      {loadingProject ? (
+                        <div className="flex justify-center p-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+                      ) : (
+                        fileTree.map((n) => (
+                          <FileTreeNode key={n.name} node={n} depth={0} parentPath="" onOpen={openFile}
+                            activePath={active} dirtyPaths={dirtyPaths} />
+                        ))
+                      )}
+                    </ScrollArea>
                   )}
+
+                  {activeBar === "search" && (
+                    <div className="p-2">
+                      <input
+                        placeholder="Search files…"
+                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary/50"
+                      />
+                      <div className="mt-2 text-[10px] text-muted-foreground">Start typing to search</div>
+                    </div>
+                  )}
+
+                  {activeBar === "git" && (
+                    <div className="p-3 text-xs text-muted-foreground">
+                      {dirtyPaths.size > 0 ? (
+                        <>
+                          <div className="mb-2 font-medium text-foreground">{dirtyPaths.size} change{dirtyPaths.size !== 1 ? "s" : ""}</div>
+                          {Array.from(dirtyPaths).map((p) => (
+                            <div key={p} className="flex items-center gap-1.5 py-0.5 text-amber-400">
+                              <Circle className="h-2 w-2 fill-current" />
+                              {p.split("/").pop()}
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div>No changes — all files clean.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Footer */}
+                  <div className="border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>{dirtyPaths.size} change{dirtyPaths.size !== 1 ? "s" : ""}</span>
+                      <span className="flex items-center gap-1"><Circle className="h-2 w-2 fill-emerald-400 text-emerald-400" />main</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
+
+          {/* Editor + terminal */}
+          <ResizablePanel id="main-editor-area" defaultSize={sidebarOpen ? 50 : 65} minSize={20}>
+            <ResizablePanelGroup id="vertical-group" direction="vertical">
+              <ResizablePanel id="code-editor" defaultSize={72} minSize={30}>
+                <div className="flex h-full flex-col">
+                  {/* Tabs */}
+                  <div className="flex h-9 shrink-0 items-center border-b border-border/60 bg-background/20 overflow-x-auto">
+                    {openTabs.map((t) => {
+                      const isActive = t === active;
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => setActive(t)}
+                          className={`group relative flex h-full shrink-0 items-center gap-1.5 border-r border-border/60 px-3 text-xs transition ${isActive ? "bg-[#0e1320] text-foreground" : "text-muted-foreground hover:bg-muted/20"}`}
+                        >
+                          <FileCode className="h-3 w-3" />
+                          <span>{t.split("/").pop()}</span>
+                          {dirtyPaths.has(t) && <Circle className="h-1.5 w-1.5 fill-amber-400 text-amber-400" />}
+                          <X
+                            className="h-3 w-3 opacity-0 transition group-hover:opacity-60 hover:!opacity-100"
+                            onClick={(e) => { e.stopPropagation(); closeTab(t); }}
+                          />
+                          {isActive && <span className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-primary to-accent" />}
+                        </button>
+                      );
+                    })}
+                    {openTabs.length === 0 && (
+                      <div className="px-4 text-xs text-muted-foreground">No files open</div>
+                    )}
+                  </div>
+
+                  {/* Breadcrumb */}
+                  <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border/60 bg-background/10 px-3 text-[11px] text-muted-foreground">
+                    {active.split("/").map((s, i, arr) => (
+                      <span key={i} className="flex items-center gap-1">
+                        {i > 0 && <ChevronRight className="h-3 w-3" />}
+                        <span className={i === arr.length - 1 ? "text-foreground" : ""}>{s}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Monaco */}
+                  <div className="min-h-0 flex-1">
+                    {activeNode ? (
+                      <CodeEditor
+                        key={active}
+                        defaultValue={activeContent}
+                        language={activeLang}
+                        onChange={(v) => setContents((c) => ({ ...c, [active]: v }))}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                        Select a file from the explorer to start editing
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </ResizablePanel>
+
+              <ResizableHandle withHandle />
+
+              {/* Terminal */}
+              <ResizablePanel id="terminal-panel" defaultSize={28} minSize={12}>
+                <div className="flex h-full flex-col bg-[#06080f]">
+                  <Tabs defaultValue="terminal" className="flex h-full flex-col">
+                    <div className="flex h-8 shrink-0 items-center border-b border-border/60 px-2">
+                      <TabsList className="h-7 bg-transparent">
+                        <TabsTrigger value="terminal" className="h-6 gap-1.5 text-xs"><TerminalIcon className="h-3 w-3" />Terminal</TabsTrigger>
+                        <TabsTrigger value="problems" className="h-6 text-xs">Problems</TabsTrigger>
+                        <TabsTrigger value="output"   className="h-6 text-xs">Output</TabsTrigger>
+                      </TabsList>
+                    </div>
+                    <TabsContent value="terminal" className="m-0 flex-1 overflow-hidden">
+                      <Terminal sandboxId={selectedProject?.id} />
+                    </TabsContent>
+                    <TabsContent value="problems" className="m-0 flex-1 overflow-auto p-3 text-xs space-y-1">
+                      <div className="flex items-start gap-2 rounded p-1.5 hover:bg-muted/30">
+                        <Circle className="mt-0.5 h-3 w-3 fill-amber-400 text-amber-400" />
+                        <div><div>Unused variable 'config'</div><div className="text-[10px] text-muted-foreground">src/lib/api.ts:4</div></div>
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="output" className="m-0 flex-1 overflow-auto p-3 font-mono text-xs text-muted-foreground">
+                      Server started on port 4000
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* AI Agents panel */}
+          <ResizablePanel id="ai-panel" defaultSize={32} minSize={15}>
+            <div className="flex h-full flex-col overflow-hidden border-l border-border/60 bg-background/40">
+              <Tabs defaultValue="code-review" className="flex h-full min-h-0 flex-col overflow-hidden">
+                {/* Agent tab selector */}
+                <div className="shrink-0 border-b border-border/60 bg-background/20 px-2 pt-2 pb-1">
+                  <div className="mb-1 flex items-center gap-1.5 px-1">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AI Agents</span>
+                  </div>
+                  {/* TabsTrigger must live inside TabsList */}
+                  <TabsList className="grid h-auto grid-cols-4 gap-0.5 bg-transparent p-0">
+                    {AGENTS.map((a) => {
+                      const Icon = a.icon;
+                      return (
+                        <TabsTrigger
+                          key={a.id}
+                          value={a.id}
+                          title={a.label}
+                          className="flex flex-col items-center gap-0.5 rounded border border-transparent px-1 py-1.5 text-[9px] leading-tight data-[state=active]:border-primary/30 data-[state=active]:bg-primary/15 data-[state=active]:text-primary"
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate max-w-full">{a.label}</span>
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+                </div>
+
+                {/* Chat panels */}
+                {AGENTS.map((a) => (
+                  <TabsContent
+                    key={a.id}
+                    value={a.id}
+                    className="m-0 min-h-0 flex-1 overflow-hidden"
+                  >
+                    {workspaceId ? (
+                      <AgentChat
+                        agent={a}
+                        fileName={active}
+                        fileContent={activeContent}
+                        workspaceId={workspaceId}
+                        onApply={(code) => setContents((c) => ({ ...c, [active]: code }))}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                        Sign in to use AI agents.
+                      </div>
+                    )}
+                  </TabsContent>
+                ))}
+              </Tabs>
             </div>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          </ResizablePanel>
+
+        </ResizablePanelGroup>
+      </div>
 
       {/* Status bar */}
       <div className="flex h-6 shrink-0 items-center gap-3 border-t border-border/60 bg-gradient-to-r from-primary/20 to-accent/20 px-3 text-[10px]">
         <span className="flex items-center gap-1"><GitBranch className="h-3 w-3" />main</span>
-        <span>0 errors • 2 warnings</span>
+        <span>{dirtyPaths.size > 0 ? `${dirtyPaths.size} unsaved` : "0 errors"}</span>
         <div className="ml-auto flex items-center gap-3 text-muted-foreground">
-          <span>Ln 12, Col 24</span>
           <span>UTF-8</span>
-          <span>LF</span>
-          <span>{activeFile?.lang ?? "plaintext"}</span>
+          <span>{activeLang}</span>
           <span className="flex items-center gap-1 text-emerald-400"><Circle className="h-2 w-2 fill-current" />AI ready</span>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Bot, CheckCircle2, GitPullRequest, MessageSquare, Rocket, ShieldAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,92 +7,162 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { fetchApi } from "@/lib/api/client";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/notifications")({
   head: () => ({ meta: [{ title: "Notifications — DevReview AI" }] }),
   component: NotificationsPage,
 });
 
-const items = [
-  { id: 1, icon: ShieldAlert, color: "text-red-400 bg-red-500/10", title: "Critical issue in PR #142", desc: "SQL injection vector found in auth/login.ts", time: "2m ago", unread: true },
-  { id: 2, icon: GitPullRequest, color: "text-blue-400 bg-blue-500/10", title: "PR #141 reviewed by Code Reviewer", desc: "5 suggestions, 1 warning — ready to merge", time: "18m ago", unread: true },
-  { id: 3, icon: Rocket, color: "text-purple-400 bg-purple-500/10", title: "DevOps pipeline generated", desc: "Dockerfile + GitHub Actions for acme/api", time: "1h ago", unread: false },
-  { id: 4, icon: Bot, color: "text-emerald-400 bg-emerald-500/10", title: "Architect Agent completed analysis", desc: "Refactor recommendations available", time: "3h ago", unread: false },
-  { id: 5, icon: CheckCircle2, color: "text-emerald-400 bg-emerald-500/10", title: "Weekly quality report ready", desc: "Quality score improved by 7% this week", time: "Yesterday", unread: false },
-  { id: 6, icon: MessageSquare, color: "text-sky-400 bg-sky-500/10", title: "Marcus commented on review #88", desc: "“Good catch — fixed in next commit”", time: "Yesterday", unread: false },
-  { id: 7, icon: AlertTriangle, color: "text-amber-400 bg-amber-500/10", title: "Build failing on main", desc: "acme/web — tests failed (12/483)", time: "2 days ago", unread: false },
-];
+const typeIcon: Record<string, any> = {
+  review: ShieldAlert, pr: GitPullRequest, devops: Rocket, agent: Bot,
+  success: CheckCircle2, comment: MessageSquare, alert: AlertTriangle,
+};
 
 function NotificationsPage() {
+  const [items, setItems] = useState<any[]>([]);
+  const [prefs, setPrefs] = useState<any>({});
+  const [savingPrefs, setSavingPrefs] = useState(false);
+
+  const load = async () => {
+    try {
+      const [notifRes, prefRes] = await Promise.all([
+        fetchApi("/notifications"),
+        fetchApi("/notifications/preferences"),
+      ]);
+      setItems(notifRes?.notifications ?? []);
+      setPrefs(prefRes?.preferences ?? {});
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const markAllRead = async () => {
+    try {
+      await fetchApi("/notifications/read-all", { method: "POST" });
+      toast.success("All marked as read");
+      load();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const markRead = async (id: string) => {
+    try {
+      await fetchApi(`/notifications/${id}/read`, { method: "POST" });
+      setItems((prev) => prev.map((n) => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    } catch {}
+  };
+
+  const savePrefs = async (key: string, value: boolean) => {
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    setSavingPrefs(true);
+    try {
+      await fetchApi("/notifications/preferences", { method: "PATCH", body: JSON.stringify({ [key]: value }) });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  const unread = items.filter((n) => !n.read_at);
+
+  const prefFields = [
+    { key: "email_review_complete", label: "PR reviews completed", desc: "When an AI review finishes on your PR" },
+    { key: "email_deploy_failed", label: "Critical issues", desc: "High severity findings in your code" },
+    { key: "push_review_complete", label: "Agent completions", desc: "When an AI agent finishes a task" },
+    { key: "push_deploy_failed", label: "Build & deploy", desc: "CI/CD failures and successes" },
+    { key: "email_weekly_report", label: "Weekly digest", desc: "Summary of quality and activity" },
+    { key: "push_weekly_report", label: "Product updates", desc: "New features and announcements" },
+  ];
+
   return (
     <div>
       <PageHeader
         eyebrow="Inbox"
         title="Notifications"
         description="All activity from your projects, agents, and integrations."
-        actions={<Button variant="outline">Mark all as read</Button>}
+        actions={<Button variant="outline" onClick={markAllRead}>Mark all as read</Button>}
       />
 
       <div className="p-6">
         <Tabs defaultValue="all">
           <TabsList>
-            <TabsTrigger value="all">All <Badge variant="secondary" className="ml-2">7</Badge></TabsTrigger>
-            <TabsTrigger value="unread">Unread <Badge variant="secondary" className="ml-2">2</Badge></TabsTrigger>
-            <TabsTrigger value="mentions">Mentions</TabsTrigger>
+            <TabsTrigger value="all">All <Badge variant="secondary" className="ml-2">{items.length}</Badge></TabsTrigger>
+            <TabsTrigger value="unread">Unread <Badge variant="secondary" className="ml-2">{unread.length}</Badge></TabsTrigger>
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
           </TabsList>
 
           <TabsContent value="all" className="mt-4 space-y-2">
-            {items.map((n) => (
-              <Card key={n.id} className={`glass flex items-start gap-3 p-4 transition hover:border-primary/30 ${n.unread ? "border-l-2 border-l-primary" : ""}`}>
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${n.color}`}>
-                  <n.icon className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-medium">{n.title}</div>
-                    <span className="shrink-0 text-xs text-muted-foreground">{n.time}</span>
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">{n.desc}</div>
-                </div>
-                {n.unread && <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+            {items.length === 0 && (
+              <Card className="glass flex flex-col items-center justify-center p-12 text-center">
+                <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
+                <h3 className="mt-3 font-display text-base font-semibold">All caught up</h3>
+                <p className="mt-1 text-sm text-muted-foreground">No notifications yet.</p>
               </Card>
-            ))}
+            )}
+            {items.map((n) => {
+              const Icon = typeIcon[n.type] ?? AlertTriangle;
+              return (
+                <Card
+                  key={n.id}
+                  className={`glass flex cursor-pointer items-start gap-3 p-4 transition hover:border-primary/30 ${!n.read_at ? "border-l-2 border-l-primary" : ""}`}
+                  onClick={() => !n.read_at && markRead(n.id)}
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium">{n.title}</div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {new Date(n.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{n.body}</div>
+                  </div>
+                  {!n.read_at && <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />}
+                </Card>
+              );
+            })}
           </TabsContent>
 
           <TabsContent value="unread" className="mt-4 space-y-2">
-            {items.filter((i) => i.unread).map((n) => (
-              <Card key={n.id} className="glass flex items-start gap-3 border-l-2 border-l-primary p-4">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${n.color}`}><n.icon className="h-4 w-4" /></div>
-                <div className="flex-1"><div className="text-sm font-medium">{n.title}</div><div className="text-xs text-muted-foreground">{n.desc}</div></div>
+            {unread.length === 0 && (
+              <Card className="glass flex flex-col items-center justify-center p-12 text-center">
+                <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
+                <h3 className="mt-3 font-display text-base font-semibold">No unread notifications</h3>
               </Card>
-            ))}
-          </TabsContent>
-
-          <TabsContent value="mentions" className="mt-4">
-            <Card className="glass flex flex-col items-center justify-center p-12 text-center">
-              <MessageSquare className="h-10 w-10 text-muted-foreground" />
-              <h3 className="mt-3 font-display text-base font-semibold">No mentions yet</h3>
-              <p className="mt-1 text-sm text-muted-foreground">When someone @mentions you, it'll show up here.</p>
-            </Card>
+            )}
+            {unread.map((n) => {
+              const Icon = typeIcon[n.type] ?? AlertTriangle;
+              return (
+                <Card key={n.id} className="glass flex cursor-pointer items-start gap-3 border-l-2 border-l-primary p-4" onClick={() => markRead(n.id)}>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-4 w-4" /></div>
+                  <div className="flex-1"><div className="text-sm font-medium">{n.title}</div><div className="text-xs text-muted-foreground">{n.body}</div></div>
+                </Card>
+              );
+            })}
           </TabsContent>
 
           <TabsContent value="preferences" className="mt-4">
             <Card className="glass divide-y divide-border/60 p-0">
-              {[
-                { label: "PR reviews completed", desc: "When an AI review finishes on your PR", on: true },
-                { label: "Critical issues", desc: "High severity findings in your code", on: true },
-                { label: "Agent completions", desc: "When an AI agent finishes a task", on: true },
-                { label: "Build & deploy", desc: "CI/CD failures and successes", on: false },
-                { label: "Weekly digest", desc: "Summary of quality and activity", on: true },
-                { label: "Product updates", desc: "New features and announcements", on: false },
-              ].map((p) => (
-                <div key={p.label} className="flex items-center justify-between p-4">
+              {prefFields.map((p) => (
+                <div key={p.key} className="flex items-center justify-between p-4">
                   <div>
                     <div className="text-sm font-medium">{p.label}</div>
                     <div className="text-xs text-muted-foreground">{p.desc}</div>
                   </div>
-                  <Switch defaultChecked={p.on} />
+                  <Switch
+                    checked={!!prefs[p.key]}
+                    disabled={savingPrefs}
+                    onCheckedChange={(v) => savePrefs(p.key, v)}
+                  />
                 </div>
               ))}
             </Card>

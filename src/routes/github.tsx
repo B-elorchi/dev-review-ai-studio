@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Github, GitBranch, GitPullRequest, Webhook, CheckCircle2, XCircle, Plus } from "lucide-react";
+import { Github, GitBranch, GitPullRequest, Webhook, CheckCircle2, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
-import { repos } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api/client";
+import { useAuthStore } from "@/lib/auth-store";
 
 export const Route = createFileRoute("/github")({
   head: () => ({ meta: [{ title: "GitHub — DevReview AI" }] }),
@@ -12,6 +14,29 @@ export const Route = createFileRoute("/github")({
 });
 
 function GithubPage() {
+  const { workspaceId } = useAuthStore();
+  const [repos, setRepos] = useState<any[]>([]);
+  const [ghStats, setGhStats] = useState<any>({ open_prs: 0, webhook_status: "—", installed: false });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [repoRes, statsRes] = await Promise.all([
+          fetchApi("/integrations/github/repos"),
+          fetchApi(`/integrations/github/stats${workspaceId ? `?workspaceId=${workspaceId}` : ""}`),
+        ]);
+        if (repoRes?.repos) setRepos(repoRes.repos);
+        if (statsRes?.stats) setGhStats(statsRes.stats);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [workspaceId]);
+
   return (
     <div>
       <PageHeader
@@ -34,21 +59,24 @@ function GithubPage() {
               <span className="text-xs uppercase tracking-wider text-muted-foreground">Connected repos</span>
               <Github className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="mt-2 font-display text-3xl font-bold">12</div>
+            <div className="mt-2 font-display text-3xl font-bold">{repos.filter(r => r.isImported !== false).length}</div>
           </Card>
           <Card className="glass p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase tracking-wider text-muted-foreground">Open pull requests</span>
               <GitPullRequest className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="mt-2 font-display text-3xl font-bold">11</div>
+            <div className="mt-2 font-display text-3xl font-bold">{ghStats.open_prs}</div>
           </Card>
           <Card className="glass p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase tracking-wider text-muted-foreground">Webhook status</span>
               <Webhook className="h-4 w-4 text-muted-foreground" />
             </div>
-            <div className="mt-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400" /><span className="font-display text-xl font-bold text-emerald-400">Healthy</span></div>
+            <div className="mt-2 flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${ghStats.webhook_status === "Healthy" ? "bg-emerald-400" : "bg-muted-foreground"}`} />
+              <span className={`font-display text-xl font-bold ${ghStats.webhook_status === "Healthy" ? "text-emerald-400" : "text-muted-foreground"}`}>{ghStats.webhook_status}</span>
+            </div>
           </Card>
         </div>
 
@@ -63,15 +91,24 @@ function GithubPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">{r.name}</span>
-                    <Badge variant="outline" className="gap-1 text-[10px]"><GitBranch className="h-3 w-3" />{r.branch}</Badge>
+                    <Badge variant="outline" className="gap-1 text-[10px]"><GitBranch className="h-3 w-3" />{r.language || 'main'}</Badge>
                   </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">Last review {r.lastReview} • {r.prs} open PRs</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">Updated {r.lastUpdated} • ⭐ {r.stars}</div>
                 </div>
-                <Badge variant="outline" className={r.status === "passing" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-rose-500/40 bg-rose-500/10 text-rose-400"}>
-                  {r.status === "passing" ? <CheckCircle2 className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}
-                  {r.status}
-                </Badge>
-                <Button variant="outline" size="sm">View</Button>
+                {r.isImported !== false ? (
+                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400">
+                    <CheckCircle2 className="mr-1 h-3 w-3" />
+                    Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    <Plus className="mr-1 h-3 w-3" />
+                    Available
+                  </Badge>
+                )}
+                <Button variant={r.isImported !== false ? "outline" : "default"} size="sm">
+                  {r.isImported !== false ? "Settings" : "Import"}
+                </Button>
               </div>
             ))}
           </div>

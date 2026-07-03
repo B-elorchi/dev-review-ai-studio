@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UpdatePasswordRouteImport } from './routes/update-password'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as TelegramRouteImport } from './routes/telegram'
 import { Route as TeamRouteImport } from './routes/team'
@@ -16,9 +17,11 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as PullRequestsRouteImport } from './routes/pull-requests'
 import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as GithubRouteImport } from './routes/github'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as DevopsRouteImport } from './routes/devops'
 import { Route as CodeReviewRouteImport } from './routes/code-review'
@@ -31,6 +34,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
 import { Route as ApiEditorChatRouteImport } from './routes/api/editor-chat'
 
+const UpdatePasswordRoute = UpdatePasswordRouteImport.update({
+  id: '/update-password',
+  path: '/update-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TemplatesRoute = TemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
@@ -66,6 +74,11 @@ const ProjectsRoute = ProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -79,6 +92,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const GithubRoute = GithubRouteImport.update({
   id: '/github',
   path: '/github',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EditorRoute = EditorRouteImport.update({
@@ -147,9 +165,11 @@ export interface FileRoutesByFullPath {
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
@@ -157,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
@@ -170,9 +191,11 @@ export interface FileRoutesByTo {
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
@@ -180,6 +203,7 @@ export interface FileRoutesByTo {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
@@ -194,9 +218,11 @@ export interface FileRoutesById {
   '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/github': typeof GithubRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
+  '/pricing': typeof PricingRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/pull-requests': typeof PullRequestsRoute
   '/reports': typeof ReportsRoute
@@ -204,6 +230,7 @@ export interface FileRoutesById {
   '/team': typeof TeamRoute
   '/telegram': typeof TelegramRoute
   '/templates': typeof TemplatesRoute
+  '/update-password': typeof UpdatePasswordRoute
   '/api/editor-chat': typeof ApiEditorChatRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
@@ -219,9 +246,11 @@ export interface FileRouteTypes {
     | '/code-review'
     | '/devops'
     | '/editor'
+    | '/forgot-password'
     | '/github'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/projects'
     | '/pull-requests'
     | '/reports'
@@ -229,6 +258,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/update-password'
     | '/api/editor-chat'
     | '/projects/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -242,9 +272,11 @@ export interface FileRouteTypes {
     | '/code-review'
     | '/devops'
     | '/editor'
+    | '/forgot-password'
     | '/github'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/projects'
     | '/pull-requests'
     | '/reports'
@@ -252,6 +284,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/update-password'
     | '/api/editor-chat'
     | '/projects/$id'
   id:
@@ -265,9 +298,11 @@ export interface FileRouteTypes {
     | '/code-review'
     | '/devops'
     | '/editor'
+    | '/forgot-password'
     | '/github'
     | '/notifications'
     | '/onboarding'
+    | '/pricing'
     | '/projects'
     | '/pull-requests'
     | '/reports'
@@ -275,6 +310,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/telegram'
     | '/templates'
+    | '/update-password'
     | '/api/editor-chat'
     | '/projects/$id'
   fileRoutesById: FileRoutesById
@@ -289,9 +325,11 @@ export interface RootRouteChildren {
   CodeReviewRoute: typeof CodeReviewRoute
   DevopsRoute: typeof DevopsRoute
   EditorRoute: typeof EditorRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   GithubRoute: typeof GithubRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
+  PricingRoute: typeof PricingRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   PullRequestsRoute: typeof PullRequestsRoute
   ReportsRoute: typeof ReportsRoute
@@ -299,11 +337,19 @@ export interface RootRouteChildren {
   TeamRoute: typeof TeamRoute
   TelegramRoute: typeof TelegramRoute
   TemplatesRoute: typeof TemplatesRoute
+  UpdatePasswordRoute: typeof UpdatePasswordRoute
   ApiEditorChatRoute: typeof ApiEditorChatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/update-password': {
+      id: '/update-password'
+      path: '/update-password'
+      fullPath: '/update-password'
+      preLoaderRoute: typeof UpdatePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/templates': {
       id: '/templates'
       path: '/templates'
@@ -353,6 +399,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -372,6 +425,13 @@ declare module '@tanstack/react-router' {
       path: '/github'
       fullPath: '/github'
       preLoaderRoute: typeof GithubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/editor': {
@@ -476,9 +536,11 @@ const rootRouteChildren: RootRouteChildren = {
   CodeReviewRoute: CodeReviewRoute,
   DevopsRoute: DevopsRoute,
   EditorRoute: EditorRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   GithubRoute: GithubRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
+  PricingRoute: PricingRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   PullRequestsRoute: PullRequestsRoute,
   ReportsRoute: ReportsRoute,
@@ -486,8 +548,19 @@ const rootRouteChildren: RootRouteChildren = {
   TeamRoute: TeamRoute,
   TelegramRoute: TelegramRoute,
   TemplatesRoute: TemplatesRoute,
+  UpdatePasswordRoute: UpdatePasswordRoute,
   ApiEditorChatRoute: ApiEditorChatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
