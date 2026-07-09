@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: "devreview-frontend",
-      script: "npm",
-      args: "run preview",
+      script: "./node_modules/.bin/vite",
+      args: "preview --host",
       cwd: "./",
       instances: 1,
       autorestart: true,
