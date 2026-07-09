@@ -1,3 +1,6 @@
+[variables]
+NITRO_PRESET = "node-server"
+
 [build]
 cmd = "npm run build"
 
