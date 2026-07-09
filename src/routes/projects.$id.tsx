@@ -739,7 +739,7 @@ function Workspace() {
             size="sm"
             variant="outline"
             className="h-7 gap-1.5 text-xs"
-            onClick={() => navigate({ to: "/code-review", search: { projectId: id } })}
+            onClick={() => navigate({ to: "/code-review/$projectId", params: { projectId: id } })}
           >
             <Play className="h-3 w-3" />Run review
           </Button>

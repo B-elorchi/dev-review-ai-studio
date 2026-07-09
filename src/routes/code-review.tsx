@@ -1,478 +1,121 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { AlertOctagon, AlertTriangle, Info, Lightbulb, Upload, Play, FolderOpen, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/page-header";
-import { CodeEditor } from "@/components/code-editor";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
-import { toast } from "sonner";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown as ChevDown } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { FolderOpen, Play, GitBranch, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/code-review")({
   head: () => ({ meta: [{ title: "Code Review — DevReview AI" }] }),
-  validateSearch: (s: Record<string, unknown>) => ({
-    projectId: typeof s.projectId === "string" ? s.projectId : undefined,
-  }),
-  component: CodeReview,
+  component: CodeReviewIndex,
 });
 
-const sevConfig = {
-  critical: { label: "Critical", className: "bg-rose-500/15 text-rose-400 border-rose-500/40", icon: AlertOctagon },
-  high:     { label: "High",     className: "bg-orange-500/15 text-orange-400 border-orange-500/40", icon: AlertTriangle },
-  medium:   { label: "Medium",   className: "bg-amber-500/15 text-amber-400 border-amber-500/40", icon: Info },
-  low:      { label: "Low",      className: "bg-sky-500/15 text-sky-400 border-sky-500/40", icon: Lightbulb },
-} as const;
-
-// ─── file tree ────────────────────────────────────────────────────────────────
-
-type FNode = { name: string; type: "file" | "folder"; lang?: string; children?: FNode[] };
-
-function FileList({
-  tree, sampleFiles, onSelect, active, depth = 0, parentPath = "",
-}: {
-  tree: FNode[];
-  sampleFiles: Record<string, { lang: string; content: string }>;
-  onSelect: (path: string, lang: string, content: string) => void;
-  active: string;
-  depth?: number;
-  parentPath?: string;
-}) {
-  return (
-    <>
-      {tree.map((node) => {
-        const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
-        if (node.type === "folder") {
-          return (
-            <FolderNode
-              key={fullPath}
-              node={node}
-              fullPath={fullPath}
-              sampleFiles={sampleFiles}
-              onSelect={onSelect}
-              active={active}
-              depth={depth}
-            />
-          );
-        }
-        const isActive = active === fullPath;
-        return (
-          <button
-            key={fullPath}
-            onClick={() => {
-              const file = sampleFiles[fullPath];
-              onSelect(fullPath, file?.lang ?? node.lang ?? "plaintext", file?.content ?? "");
-            }}
-            className={`flex w-full items-center gap-1.5 py-1 text-left text-[11px] hover:bg-muted/40 ${
-              isActive ? "bg-primary/15 text-primary" : "text-muted-foreground"
-            }`}
-            style={{ paddingLeft: 12 + depth * 10 }}
-          >
-            {node.name}
-          </button>
-        );
-      })}
-    </>
-  );
-}
-
-function FolderNode({ node, fullPath, sampleFiles, onSelect, active, depth }: {
-  node: FNode; fullPath: string;
-  sampleFiles: Record<string, { lang: string; content: string }>;
-  onSelect: (path: string, lang: string, content: string) => void;
-  active: string; depth: number;
-}) {
-  const [open, setOpen] = useState(depth < 1);
-  return (
-    <div>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 py-1 text-[11px] text-muted-foreground hover:bg-muted/40"
-        style={{ paddingLeft: 12 + depth * 10 }}
-      >
-        {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-        <FolderOpen className="h-3 w-3 shrink-0" />
-        {node.name}
-      </button>
-      {open && node.children && (
-        <FileList
-          tree={node.children}
-          sampleFiles={sampleFiles}
-          onSelect={onSelect}
-          active={active}
-          depth={depth + 1}
-          parentPath={fullPath}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── main component ───────────────────────────────────────────────────────────
-
-function CodeReview() {
+function CodeReviewIndex() {
   const { workspaceId } = useAuthStore();
-  const { projectId: initialProjectId } = Route.useSearch();
-
-  // Project selector
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<any[]>([]);
-  const [projectId, setProjectId] = useState<string | undefined>(initialProjectId);
-  const [project, setProject] = useState<any>(null);
-
-  // File state
-  const [fileTree, setFileTree] = useState<FNode[]>([]);
-  const [sampleFiles, setSampleFiles] = useState<Record<string, { lang: string; content: string }>>({});
-  const [activeFile, setActiveFile] = useState<{ path: string; lang: string; content: string } | null>(null);
-
-  // Review state
-  const [reviewData, setReviewData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [triggering, setTriggering] = useState(false);
-  const [polling, setPolling] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load project list once
   useEffect(() => {
     if (!workspaceId) return;
     fetchApi("/projects", {}, workspaceId)
       .then((d) => setProjects(d.projects ?? []))
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [workspaceId]);
-
-  // Keep projectId in sync with search param when it changes
-  useEffect(() => {
-    setProjectId(initialProjectId);
-  }, [initialProjectId]);
-
-  // Load files + review when projectId changes
-  useEffect(() => {
-    if (!workspaceId) return;
-    setLoading(true);
-    setActiveFile(null);
-    setFileTree([]);
-    setSampleFiles({});
-    setReviewData(null);
-    stopPolling();
-
-    async function load() {
-      try {
-        if (projectId) {
-          const [projData, filesData, reviewsData] = await Promise.all([
-            fetchApi(`/projects/${projectId}`, {}, workspaceId ?? undefined),
-            fetchApi(`/projects/${projectId}/files`, {}, workspaceId ?? undefined),
-            fetchApi(`/reviews?projectId=${projectId}`, {}, workspaceId ?? undefined),
-          ]);
-
-          setProject(projData.project ?? null);
-
-          const tree: FNode[] = filesData.fileTree ?? [];
-          const samples: Record<string, { lang: string; content: string }> = filesData.sampleFiles ?? {};
-          setFileTree(tree);
-          setSampleFiles(samples);
-
-          // Open first file that has content
-          const firstKey = Object.keys(samples)[0];
-          if (firstKey) {
-            setActiveFile({ path: firstKey, lang: samples[firstKey].lang, content: samples[firstKey].content });
-          }
-
-          const reviews: any[] = Array.isArray(reviewsData.data) ? reviewsData.data : [];
-          if (reviews.length > 0) setReviewData(reviews[0]);
-        } else {
-          const res = await fetchApi("/reviews", {}, workspaceId ?? undefined);
-          const list: any[] = Array.isArray(res.data) ? res.data : [];
-          if (list.length > 0) setReviewData(list[0]);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, projectId]);
-
-  // Cleanup polling on unmount
-  useEffect(() => () => stopPolling(), []);
-
-  function stopPolling() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    setPolling(false);
-  }
-
-  function startPolling(reviewId: string) {
-    setPolling(true);
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetchApi(`/reviews/${reviewId}`, {}, workspaceId ?? undefined);
-        const r = res.review;
-        if (r && (r.status === "completed" || r.status === "failed" || r.status === "error")) {
-          setReviewData(r);
-          stopPolling();
-          if (r.status === "completed") {
-            toast.success(`Review complete — ${r.review_findings?.length ?? 0} findings`);
-          } else {
-            toast.error("Review failed — check API server logs");
-          }
-        }
-      } catch { stopPolling(); }
-    }, 3000);
-  }
-
-  const triggerReview = async () => {
-    if (!projectId || !workspaceId) {
-      toast.error("Select a project first");
-      return;
-    }
-    setTriggering(true);
-    try {
-      // Build a diff string from whatever sample files are already loaded
-      const diffParts = Object.entries(sampleFiles).map(
-        ([path, { content }]) => `=== ${path} ===\n${content}`,
-      );
-      const diff = diffParts.length ? diffParts.join("\n\n") : undefined;
-
-      const res = await fetchApi(
-        `/projects/${projectId}/reviews`,
-        { method: "POST", body: JSON.stringify({ ref: "HEAD", diff }) },
-        workspaceId,
-      );
-      const review = res.review;
-      toast.success("Review queued — analysing your code…");
-      setReviewData(review); // show queued state immediately
-      startPolling(review.id); // poll until done
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to trigger review");
-    } finally {
-      setTriggering(false);
-    }
-  };
-
-  const selectFile = (path: string, lang: string, content: string) => {
-    setActiveFile({ path, lang, content });
-  };
-
-  const score = reviewData?.score ?? 0;
-  const circumference = 2 * Math.PI * 56;
-  const offset = circumference - (score / 100) * circumference;
-  const findings: any[] = reviewData?.review_findings ?? [];
-  const crit = findings.filter((f) => f.severity === "critical").length;
-  const high = findings.filter((f) => f.severity === "high").length;
-  const med  = findings.filter((f) => f.severity === "medium").length;
-
-  const displayCode  = activeFile?.content  ?? "// Select a file from the tree to view it, then click \"Run review\".";
-  const displayLang  = activeFile?.lang     ?? "typescript";
-  const displayLabel = activeFile?.path     ?? (project ? `${project.name} — click a file` : "No project selected");
 
   return (
     <div>
       <PageHeader
         eyebrow="AI Review"
-        title={project ? `Code Review — ${project.name}` : "Code Review"}
-        description={project ? `Reviewing ${project.repo_url || project.name}` : "Select a project to begin."}
-        actions={
-          <>
-            {/* Project selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  {project?.name ?? "Select project"}
-                  <ChevDown className="h-3.5 w-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {projects.map((p) => (
-                  <DropdownMenuItem
-                    key={p.id}
-                    className={p.id === projectId ? "bg-primary/10 font-medium" : ""}
-                    onClick={() => setProjectId(p.id)}
-                  >
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-                {projects.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No projects found</div>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button variant="outline" size="sm"><Upload className="mr-1.5 h-4 w-4" />Upload file</Button>
-
-            <Button
-              size="sm"
-              className="bg-gradient-to-r from-primary to-accent text-primary-foreground"
-              onClick={triggerReview}
-              disabled={triggering || polling || !projectId}
-            >
-              {triggering ? (
-                <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Queuing…</>
-              ) : polling ? (
-                <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />Analysing…</>
-              ) : (
-                <><Play className="mr-1.5 h-4 w-4" />Run review</>
-              )}
-            </Button>
-          </>
-        }
+        title="Code Review"
+        description="Select a project to start an AI-powered code review."
       />
 
-      {!projectId && (
-        <div className="mx-6 mb-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-          <FolderOpen className="h-4 w-4 shrink-0" />
-          No project selected. Use the dropdown above or go to{" "}
-          <a href="/projects" className="underline mx-1">Projects</a> and click <strong>Review</strong>.
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
-        {/* File tree + editor */}
-        <Card className="glass overflow-hidden lg:col-span-2 p-0 flex min-h-[500px]">
-          {/* File tree sidebar */}
-          {fileTree.length > 0 && (
-            <div className="w-44 shrink-0 border-r border-border/60 overflow-y-auto">
-              <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
-                Files
-              </div>
-              <FileList
-                tree={fileTree}
-                sampleFiles={sampleFiles}
-                onSelect={selectFile}
-                active={activeFile?.path ?? ""}
-              />
-            </div>
-          )}
-
-          {/* Editor */}
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 text-xs">
-              <span className="font-mono text-muted-foreground truncate">{displayLabel}</span>
-              <Badge variant="outline" className="text-[10px] ml-2 shrink-0">
-                {polling ? "analysing…" : (reviewData?.ref ?? "HEAD")}
-              </Badge>
-            </div>
-            <div className="flex-1 h-[460px]">
-              <CodeEditor language={displayLang} value={displayCode} readOnly />
-            </div>
+      <div className="p-6">
+        {loading && (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i} className="glass h-32 animate-pulse" />
+            ))}
           </div>
-        </Card>
+        )}
 
-        {/* Score ring */}
-        <Card className="glass flex flex-col items-center justify-center p-6">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Overall Score</div>
-          <div className="relative my-4 h-36 w-36">
-            <svg className="h-full w-full -rotate-90" viewBox="0 0 128 128">
-              <circle cx="64" cy="64" r="56" stroke="var(--color-border)" strokeWidth="10" fill="none" />
-              <circle cx="64" cy="64" r="56" stroke="url(#scoreGrad)" strokeWidth="10" fill="none"
-                strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
-              <defs>
-                <linearGradient id="scoreGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="var(--color-primary)" />
-                  <stop offset="100%" stopColor="var(--color-accent)" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              {polling ? (
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              ) : (
-                <>
-                  <span className="font-display text-4xl font-bold gradient-text">{score || "—"}</span>
-                  {score > 0 && <span className="text-xs text-muted-foreground">/ 100</span>}
-                </>
-              )}
+        {!loading && projects.length === 0 && (
+          <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border p-16 text-center text-muted-foreground">
+            <FolderOpen className="h-10 w-10 opacity-40" />
+            <div>
+              <p className="font-medium text-foreground">No projects yet</p>
+              <p className="text-sm mt-1">Create a project first, then come back to run a review.</p>
             </div>
+            <Button size="sm" onClick={() => navigate({ to: "/projects" })}>
+              Go to Projects
+            </Button>
           </div>
-          <div className="grid w-full grid-cols-3 gap-2 text-center text-xs">
-            <div><div className="font-display text-lg font-bold text-rose-400">{crit}</div><div className="text-muted-foreground">Critical</div></div>
-            <div><div className="font-display text-lg font-bold text-orange-400">{high}</div><div className="text-muted-foreground">High</div></div>
-            <div><div className="font-display text-lg font-bold text-amber-400">{med}</div><div className="text-muted-foreground">Medium</div></div>
-          </div>
-          {project && (
-            <div className="mt-4 w-full border-t border-border/60 pt-4 text-xs text-muted-foreground space-y-1">
-              <div className="flex justify-between"><span>Project</span><span className="text-foreground font-medium truncate ml-2">{project.name}</span></div>
-              {reviewData?.created_at && (
-                <div className="flex justify-between"><span>Reviewed</span><span>{new Date(reviewData.created_at).toLocaleDateString()}</span></div>
-              )}
-              <div className="flex justify-between">
-                <span>Status</span>
-                <span className={`capitalize font-medium ${
-                  reviewData?.status === "completed" ? "text-emerald-400" :
-                  reviewData?.status === "failed" ? "text-rose-400" :
-                  reviewData?.status === "queued" || polling ? "text-amber-400" : ""
-                }`}>
-                  {polling && reviewData?.status !== "completed" ? "analysing…" : (reviewData?.status ?? "No review yet")}
-                </span>
-              </div>
-            </div>
-          )}
-        </Card>
+        )}
 
-        {/* Findings */}
-        <div className="space-y-3 lg:col-span-3">
-          <h3 className="font-display text-lg font-semibold">
-            Findings{findings.length > 0 && <span className="ml-2 text-sm text-muted-foreground font-normal">({findings.length})</span>}
-          </h3>
-
-          {polling && findings.length === 0 && (
-            <div className="flex items-center justify-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-8 text-sm text-primary">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              AI is analysing your code — findings will appear here automatically…
-            </div>
-          )}
-
-          {!polling && findings.length === 0 && !loading && (
-            <div className="p-8 text-center text-muted-foreground rounded-xl border border-dashed border-border">
-              {projectId
-                ? "No findings yet. Click \"Run review\" to analyse this project."
-                : "Select a project and run a review to see findings here."}
-            </div>
-          )}
-
-          {findings.map((f: any) => {
-            const c = sevConfig[f.severity as keyof typeof sevConfig] ?? sevConfig.low;
-            const Icon = c.icon;
-            return (
-              <Card key={f.id} className="glass overflow-hidden p-0">
-                <div className="flex items-start gap-4 p-5">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${c.className}`}>
-                    <Icon className="h-4 w-4" />
+        {!loading && projects.length > 0 && (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map((p) => (
+              <Card
+                key={p.id}
+                className="glass group cursor-pointer p-5 transition-all hover:border-primary/40 hover:shadow-glow"
+                onClick={() => navigate({ to: "/code-review/$projectId", params: { projectId: p.id } })}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <FolderOpen className="h-5 w-5 text-primary" />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className={c.className}>{c.label}</Badge>
-                      <h4 className="font-semibold">{f.title || f.rule_id}</h4>
-                      {f.file_path && (
-                        <button
-                          className="ml-auto font-mono text-xs text-muted-foreground hover:text-primary"
-                          onClick={() => {
-                            const file = sampleFiles[f.file_path];
-                            if (file) selectFile(f.file_path, file.lang, file.content);
-                          }}
-                        >
-                          {f.file_path}:{f.line_number}
-                        </button>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{f.message}</p>
-                    {f.suggestion && (
-                      <div className="mt-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-primary">Recommendation</span>
-                        <p className="mt-1 text-muted-foreground">{f.suggestion}</p>
-                      </div>
-                    )}
-                  </div>
+                  {p.health_score != null && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        p.health_score >= 80 ? "border-emerald-500/40 text-emerald-400" :
+                        p.health_score >= 60 ? "border-amber-500/40 text-amber-400" :
+                        "border-rose-500/40 text-rose-400"
+                      }
+                    >
+                      {p.health_score}/100
+                    </Badge>
+                  )}
                 </div>
+
+                <h3 className="mt-3 font-semibold">{p.name}</h3>
+                {p.description && (
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{p.description}</p>
+                )}
+
+                <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                  {p.default_branch && (
+                    <span className="flex items-center gap-1">
+                      <GitBranch className="h-3 w-3" /> {p.default_branch}
+                    </span>
+                  )}
+                  {p.updated_at && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {new Date(p.updated_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  size="sm"
+                  className="mt-4 w-full bg-gradient-to-r from-primary to-accent text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate({ to: "/code-review/$projectId", params: { projectId: p.id } });
+                  }}
+                >
+                  <Play className="mr-1.5 h-3.5 w-3.5" /> Review
+                </Button>
               </Card>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

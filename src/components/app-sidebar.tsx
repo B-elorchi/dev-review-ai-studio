@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, FolderGit2, ScanSearch, Workflow, Bot,
   Github, Send, BarChart3, Settings, Sparkles, GitPullRequest,
-  LayoutTemplate, Bell, Users, KeyRound, CreditCard, FileLock2, Code2,
+  LayoutTemplate, Bell, Users, KeyRound, CreditCard, FileLock2, Code2, Building,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -25,6 +25,7 @@ const integrations = [
 ];
 const system = [
   { title: "Notifications", url: "/notifications", icon: Bell },
+  { title: "Workspace", url: "/workspace", icon: Building },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Team", url: "/team", icon: Users },
   { title: "API Keys", url: "/api-keys", icon: KeyRound },

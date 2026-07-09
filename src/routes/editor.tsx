@@ -649,8 +649,9 @@ function EditorPage() {
   const handleSave = async () => {
     if (!selectedProject || dirtyPaths.size === 0) return;
     
+    let toastId: string | number = "";
     try {
-      const toastId = toast.loading(`Saving ${dirtyPaths.size} file(s)...`);
+      toastId = toast.loading(`Saving ${dirtyPaths.size} file(s)...`);
       
       for (const path of Array.from(dirtyPaths)) {
         await fetchApi(`/editor/sandboxes/${selectedProject.id}/files`, {
@@ -779,7 +780,8 @@ function EditorPage() {
         </div>
 
         {/* Everything else is resizable panels */}
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* @ts-expect-error - React-resizable-panels types are missing */}
+        <ResizablePanelGroup direction={"horizontal" as any} className="flex-1">
 
           {/* Explorer sidebar — only rendered when open */}
           {sidebarOpen && (
@@ -876,7 +878,8 @@ function EditorPage() {
 
           {/* Editor + terminal */}
           <ResizablePanel id="main-editor-area" defaultSize={sidebarOpen ? 50 : 65} minSize={20}>
-            <ResizablePanelGroup id="vertical-group" direction="vertical">
+            {/* @ts-expect-error - React-resizable-panels types are missing */}
+            <ResizablePanelGroup id="vertical-group" direction={"vertical" as any}>
               <ResizablePanel id="code-editor" defaultSize={72} minSize={30}>
                 <div className="flex h-full flex-col">
                   {/* Tabs */}

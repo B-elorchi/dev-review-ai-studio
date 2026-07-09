@@ -1,5 +1,5 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { Search, Bell, ChevronDown, Command, Check, Plus, Loader2, AlertTriangle } from "lucide-react";
+import { Search, Bell, ChevronDown, Command, Check, Plus, Loader2, AlertTriangle, Settings } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -164,6 +164,9 @@ export function TopNav() {
 
   useEffect(() => {
     if (user) loadWs();
+    
+    window.addEventListener("workspace-updated", loadWs);
+    return () => window.removeEventListener("workspace-updated", loadWs);
   }, [user]);
 
   const activeWs = workspaces.find((w) => w.id === workspaceId) || workspaces[0];
@@ -234,6 +237,9 @@ export function TopNav() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate({ to: "/workspace" })} className="cursor-pointer">
+              <Settings className="mr-2 h-4 w-4" /> Workspace Settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setCreateOpen(true)} className="cursor-pointer">
               <Plus className="mr-2 h-4 w-4" /> Create workspace
             </DropdownMenuItem>

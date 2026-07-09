@@ -240,7 +240,7 @@ function BillingPage() {
                     const res = await fetchApi("/billing/paypal/create-order", {
                       method: "POST",
                       body: JSON.stringify({ plan: upgradePlan }),
-                    }, workspaceId);
+                    }, workspaceId ?? undefined);
                     return res.id;
                   } catch (err: any) {
                     toast.error(err.message || "Failed to create PayPal order");
@@ -252,7 +252,7 @@ function BillingPage() {
                     const captureRes = await fetchApi("/billing/paypal/capture-order", {
                       method: "POST",
                       body: JSON.stringify({ orderId: data.orderID, plan: upgradePlan }),
-                    }, workspaceId);
+                    }, workspaceId ?? undefined);
                     if (captureRes.status === "COMPLETED") {
                       toast.success("Payment successful!");
                       setUpgradePlan(null);

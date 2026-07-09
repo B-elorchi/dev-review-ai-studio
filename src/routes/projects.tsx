@@ -502,7 +502,7 @@ function ProjectsPage() {
                   <DropdownMenuItem onClick={() => openEdit(p)}>
                     <Pencil className="mr-2 h-3.5 w-3.5" />Edit
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate({ to: "/code-review", search: { projectId: p.id } })}>
+                  <DropdownMenuItem onClick={() => navigate({ to: "/code-review/$projectId", params: { projectId: p.id } })}>
                     <ScanSearch className="mr-2 h-3.5 w-3.5" />Review
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -541,7 +541,7 @@ function ProjectsPage() {
               <Button
                 size="sm"
                 className="flex-1 bg-primary/15 text-primary hover:bg-primary/25"
-                onClick={() => navigate({ to: "/code-review", search: { projectId: p.id } })}
+                onClick={() => navigate({ to: "/code-review/$projectId", params: { projectId: p.id } })}
               >
                 Review
               </Button>
