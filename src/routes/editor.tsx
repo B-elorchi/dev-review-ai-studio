@@ -475,17 +475,17 @@ function AgentChat({
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-3">
+      <ScrollArea className="min-w-0 flex-1 p-3 [&_[data-radix-scroll-area-viewport]>div]:!block">
+        <div className="w-full min-w-0 space-y-3">
           {chat.map((m, i) => {
             const isUser = m.role === "user";
             const block = !isUser ? extractLastCodeBlock(m.text) : null;
             return (
-              <div key={i} className={`flex gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
+              <div key={i} className={`flex min-w-0 gap-2 ${isUser ? "flex-row-reverse" : ""}`}>
                 <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isUser ? "bg-muted text-[9px] font-bold" : `bg-gradient-to-br ${agent.color} text-white`}`}>
                   {isUser ? "ME" : <Icon className="h-3 w-3" />}
                 </div>
-                <div className={`max-w-[85%] space-y-2 rounded-lg px-2.5 py-2 text-xs leading-relaxed ${isUser ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
+                <div className={`min-w-0 max-w-[85%] space-y-2 overflow-hidden break-words rounded-lg px-2.5 py-2 text-xs leading-relaxed ${isUser ? "bg-primary text-primary-foreground" : "bg-muted/50"}`}>
                   {/* Thinking indicator while agent runs tools */}
                   {!isUser && thinking && i === chat.length - 1 && !m.text && (
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -493,7 +493,7 @@ function AgentChat({
                       <span>Running analysis tools…</span>
                     </div>
                   )}
-                  <div className="prose prose-invert prose-xs max-w-none [&_code]:text-[11px] [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:max-h-40 [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_ul]:my-1">
+                  <div className="prose prose-invert prose-xs max-w-none break-words [&_code]:break-all [&_code]:text-[11px] [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:max-h-40 [&_pre]:max-w-full [&_pre]:overflow-auto [&_pre]:rounded [&_pre]:bg-[#0a0d18] [&_pre]:p-2 [&_pre]:text-[11px] [&_pre_code]:break-normal [&_ul]:my-1">
                     <ReactMarkdown>
                       {m.text || (streaming && !thinking && i === chat.length - 1 ? "▍" : "")}
                     </ReactMarkdown>
