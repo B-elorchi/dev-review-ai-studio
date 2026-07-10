@@ -172,6 +172,26 @@ function CodeReviewProject() {
     }, 3000);
   }
 
+  const handleFileSelect = async (path: string, lang: string, content: string) => {
+    if (!sampleFiles[path] && projectId && workspaceId) {
+      setActiveFile({ path, lang, content: "Loading..." });
+      try {
+        const res = await fetchApi(`/projects/${projectId}/files/${encodeURIComponent(path)}`, {}, workspaceId);
+        if (res.content) {
+          const newContent = res.content;
+          setSampleFiles(prev => ({ ...prev, [path]: { lang, content: newContent } }));
+          setActiveFile({ path, lang, content: newContent });
+        } else {
+          setActiveFile({ path, lang, content: "// Empty or binary file" });
+        }
+      } catch (err) {
+        setActiveFile({ path, lang, content: "// Failed to load file" });
+      }
+    } else {
+      setActiveFile({ path, lang, content });
+    }
+  };
+
   const triggerReview = async () => {
     if (!projectId) return;
     setTriggering(true);
@@ -249,7 +269,7 @@ function CodeReviewProject() {
               <FileList
                 tree={fileTree}
                 sampleFiles={sampleFiles}
-                onSelect={(path, lang, content) => setActiveFile({ path, lang, content })}
+                onSelect={handleFileSelect}
                 active={activeFile?.path ?? ""}
               />
             </div>
@@ -374,7 +394,7 @@ function CodeReviewProject() {
                           className="ml-auto font-mono text-xs text-muted-foreground hover:text-primary"
                           onClick={() => {
                             const file = sampleFiles[f.file_path];
-                            if (file) setActiveFile({ path: f.file_path, lang: file.lang, content: file.content });
+                            handleFileSelect(f.file_path, file?.lang ?? "plaintext", file?.content ?? "");
                           }}
                         >
                           {f.file_path}:{f.line_number}

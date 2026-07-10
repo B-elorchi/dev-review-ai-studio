@@ -617,12 +617,27 @@ function EditorPage() {
     }
   };
 
-  const openFile = (path: string, node: FileNode) => {
-    if (!openTabs.includes(path)) setOpenTabs([...openTabs, path]);
+  const openFile = async (path: string, node: FileNode) => {
+    if (!openTabs.includes(path)) setOpenTabs((prev) => [...prev, path]);
     setActive(path);
-    if (contents[path] === undefined && node.content !== undefined) {
-      setContents((c) => ({ ...c, [path]: node.content! }));
-      setOriginals((o) => ({ ...o, [path]: node.content! }));
+    if (contents[path] === undefined) {
+      if (node.content !== undefined) {
+        setContents((c) => ({ ...c, [path]: node.content! }));
+        setOriginals((o) => ({ ...o, [path]: node.content! }));
+      } else if (selectedProject && workspaceId) {
+        setContents((c) => ({ ...c, [path]: "Loading..." }));
+        try {
+          const res = await fetchApi(`/projects/${selectedProject.id}/files/${encodeURIComponent(path)}`, {}, workspaceId);
+          if (res.content) {
+            setContents((c) => ({ ...c, [path]: res.content }));
+            setOriginals((o) => ({ ...o, [path]: res.content }));
+          } else {
+            setContents((c) => ({ ...c, [path]: "// Empty or binary file" }));
+          }
+        } catch {
+          setContents((c) => ({ ...c, [path]: "// Failed to load file" }));
+        }
+      }
     }
   };
 
