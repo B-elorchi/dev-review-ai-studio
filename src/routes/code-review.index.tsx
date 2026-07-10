@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, Play, GitBranch, Clock } from "lucide-react";
 
-export const Route = createFileRoute("/code-review")({
+export const Route = createFileRoute("/code-review/")({
   head: () => ({ meta: [{ title: "Code Review — DevReview AI" }] }),
   component: CodeReviewIndex,
 });
