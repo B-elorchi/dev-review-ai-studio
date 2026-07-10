@@ -14,7 +14,7 @@ import { fetchApi } from "@/lib/api/client";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/code-review/$projectId")({
+export const Route = createFileRoute("/code-review_/$projectId")({
   head: () => ({ meta: [{ title: "Code Review — DevReview AI" }] }),
   component: CodeReviewProject,
 });

@@ -33,7 +33,7 @@ import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
-import { Route as CodeReviewProjectIdRouteImport } from './routes/code-review.$projectId'
+import { Route as CodeReviewProjectIdRouteImport } from './routes/code-review_.$projectId'
 import { Route as ApiEditorChatRouteImport } from './routes/api/editor-chat'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
@@ -157,9 +157,9 @@ const ProjectsIdRoute = ProjectsIdRouteImport.update({
   getParentRoute: () => ProjectsRoute,
 } as any)
 const CodeReviewProjectIdRoute = CodeReviewProjectIdRouteImport.update({
-  id: '/$projectId',
-  path: '/$projectId',
-  getParentRoute: () => CodeReviewRoute,
+  id: '/code-review_/$projectId',
+  path: '/code-review/$projectId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiEditorChatRoute = ApiEditorChatRouteImport.update({
   id: '/api/editor-chat',
@@ -174,7 +174,7 @@ export interface FileRoutesByFullPath {
   '/audit-log': typeof AuditLogRoute
   '/auth': typeof AuthRoute
   '/billing': typeof BillingRoute
-  '/code-review': typeof CodeReviewRouteWithChildren
+  '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -202,7 +202,7 @@ export interface FileRoutesByTo {
   '/audit-log': typeof AuditLogRoute
   '/auth': typeof AuthRoute
   '/billing': typeof BillingRoute
-  '/code-review': typeof CodeReviewRouteWithChildren
+  '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -231,7 +231,7 @@ export interface FileRoutesById {
   '/audit-log': typeof AuditLogRoute
   '/auth': typeof AuthRoute
   '/billing': typeof BillingRoute
-  '/code-review': typeof CodeReviewRouteWithChildren
+  '/code-review': typeof CodeReviewRoute
   '/devops': typeof DevopsRoute
   '/editor': typeof EditorRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -249,7 +249,7 @@ export interface FileRoutesById {
   '/update-password': typeof UpdatePasswordRoute
   '/workspace': typeof WorkspaceRoute
   '/api/editor-chat': typeof ApiEditorChatRoute
-  '/code-review/$projectId': typeof CodeReviewProjectIdRoute
+  '/code-review_/$projectId': typeof CodeReviewProjectIdRoute
   '/projects/$id': typeof ProjectsIdRoute
 }
 export interface FileRouteTypes {
@@ -335,7 +335,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/workspace'
     | '/api/editor-chat'
-    | '/code-review/$projectId'
+    | '/code-review_/$projectId'
     | '/projects/$id'
   fileRoutesById: FileRoutesById
 }
@@ -346,7 +346,7 @@ export interface RootRouteChildren {
   AuditLogRoute: typeof AuditLogRoute
   AuthRoute: typeof AuthRoute
   BillingRoute: typeof BillingRoute
-  CodeReviewRoute: typeof CodeReviewRouteWithChildren
+  CodeReviewRoute: typeof CodeReviewRoute
   DevopsRoute: typeof DevopsRoute
   EditorRoute: typeof EditorRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
@@ -364,6 +364,7 @@ export interface RootRouteChildren {
   UpdatePasswordRoute: typeof UpdatePasswordRoute
   WorkspaceRoute: typeof WorkspaceRoute
   ApiEditorChatRoute: typeof ApiEditorChatRoute
+  CodeReviewProjectIdRoute: typeof CodeReviewProjectIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -536,12 +537,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsIdRouteImport
       parentRoute: typeof ProjectsRoute
     }
-    '/code-review/$projectId': {
-      id: '/code-review/$projectId'
-      path: '/$projectId'
+    '/code-review_/$projectId': {
+      id: '/code-review_/$projectId'
+      path: '/code-review/$projectId'
       fullPath: '/code-review/$projectId'
       preLoaderRoute: typeof CodeReviewProjectIdRouteImport
-      parentRoute: typeof CodeReviewRoute
+      parentRoute: typeof rootRouteImport
     }
     '/api/editor-chat': {
       id: '/api/editor-chat'
@@ -552,18 +553,6 @@ declare module '@tanstack/react-router' {
     }
   }
 }
-
-interface CodeReviewRouteChildren {
-  CodeReviewProjectIdRoute: typeof CodeReviewProjectIdRoute
-}
-
-const CodeReviewRouteChildren: CodeReviewRouteChildren = {
-  CodeReviewProjectIdRoute: CodeReviewProjectIdRoute,
-}
-
-const CodeReviewRouteWithChildren = CodeReviewRoute._addFileChildren(
-  CodeReviewRouteChildren,
-)
 
 interface ProjectsRouteChildren {
   ProjectsIdRoute: typeof ProjectsIdRoute
@@ -584,7 +573,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditLogRoute: AuditLogRoute,
   AuthRoute: AuthRoute,
   BillingRoute: BillingRoute,
-  CodeReviewRoute: CodeReviewRouteWithChildren,
+  CodeReviewRoute: CodeReviewRoute,
   DevopsRoute: DevopsRoute,
   EditorRoute: EditorRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
@@ -602,6 +591,7 @@ const rootRouteChildren: RootRouteChildren = {
   UpdatePasswordRoute: UpdatePasswordRoute,
   WorkspaceRoute: WorkspaceRoute,
   ApiEditorChatRoute: ApiEditorChatRoute,
+  CodeReviewProjectIdRoute: CodeReviewProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
