@@ -16,9 +16,6 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/code-review/$projectId")({
   head: () => ({ meta: [{ title: "Code Review — DevReview AI" }] }),
-  validateSearch: (s: Record<string, unknown>) => ({
-    autoStart: s.autoStart === true || s.autoStart === "true",
-  }),
   component: CodeReviewProject,
 });
 
@@ -201,7 +198,6 @@ function FolderNode({ node, fullPath, sampleFiles, onSelect, active, depth }: {
 function CodeReviewProject() {
   const { workspaceId } = useAuthStore();
   const { projectId }   = Route.useParams();
-  const { autoStart }   = Route.useSearch();
   const navigate        = useNavigate();
 
   const [project,     setProject]     = useState<any>(null);
@@ -210,16 +206,16 @@ function CodeReviewProject() {
   const [activeFile,  setActiveFile]  = useState<{ path: string; lang: string; content: string } | null>(null);
   const [reviewData,  setReviewData]  = useState<any>(null);
   const [loading,     setLoading]     = useState(true);
-  const [reviewStep,  setReviewStep]  = useState<StepId | null>(null); // null = not reviewing
-  const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startedRef = useRef(false);
+  const [reviewStep,  setReviewStep]  = useState<StepId | null>(null);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoStarted = useRef(false);
 
   // ── Load project + files ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (!workspaceId || !projectId) return;
     setLoading(true);
-    startedRef.current = false;
+    autoStarted.current = false;
 
     async function load() {
       try {
@@ -254,15 +250,15 @@ function CodeReviewProject() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, projectId]);
 
-  // ── Auto-start when loaded ────────────────────────────────────────────────
+  // ── Auto-start when loaded and no existing review ────────────────────────
 
   useEffect(() => {
-    if (!loading && autoStart && project && !startedRef.current) {
-      startedRef.current = true;
+    if (!loading && !reviewData && project && !autoStarted.current) {
+      autoStarted.current = true;
       triggerReview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, autoStart, project]);
+  }, [loading, reviewData, project]);
 
   // ── Polling ───────────────────────────────────────────────────────────────
 

@@ -29,7 +29,7 @@ function CodeReviewIndex() {
 
   const goReview = (projectId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    navigate({ to: "/code-review/$projectId", params: { projectId }, search: { autoStart: true } });
+    navigate({ to: "/code-review/$projectId", params: { projectId } });
   };
 
   return (
