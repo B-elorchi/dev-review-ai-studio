@@ -291,6 +291,22 @@ function CodeReviewProject() {
     }, 3000);
   }
 
+  // ── Open a file, lazy-loading content when not pre-fetched ───────────────
+
+  const openFile = async (path: string, lang: string, content: string) => {
+    if (content) { setActiveFile({ path, lang, content }); return; }
+    setActiveFile({ path, lang, content: "// Loading…" });
+    try {
+      const encPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetchApi(`/projects/${projectId}/files/${encPath}`, {}, workspaceId ?? undefined);
+      const loaded = res.content || "// Empty or binary file";
+      setSampleFiles((s) => ({ ...s, [path]: { lang: res.lang ?? lang, content: loaded } }));
+      setActiveFile({ path, lang: res.lang ?? lang, content: loaded });
+    } catch {
+      setActiveFile({ path, lang, content: "// Failed to load file" });
+    }
+  };
+
   // ── Trigger review ────────────────────────────────────────────────────────
 
   const triggerReview = async () => {
@@ -385,7 +401,7 @@ function CodeReviewProject() {
                 <FileList
                   tree={fileTree}
                   sampleFiles={sampleFiles}
-                  onSelect={(path, lang, content) => setActiveFile({ path, lang, content })}
+                  onSelect={openFile}
                   active={activeFile?.path ?? ""}
                 />
               </div>

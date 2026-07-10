@@ -627,7 +627,8 @@ function EditorPage() {
       } else if (selectedProject && workspaceId) {
         setContents((c) => ({ ...c, [path]: "Loading..." }));
         try {
-          const res = await fetchApi(`/projects/${selectedProject.id}/files/${encodeURIComponent(path)}`, {}, workspaceId);
+          const encPath = path.split("/").map(encodeURIComponent).join("/");
+          const res = await fetchApi(`/projects/${selectedProject.id}/files/${encPath}`, {}, workspaceId);
           if (res.content) {
             setContents((c) => ({ ...c, [path]: res.content }));
             setOriginals((o) => ({ ...o, [path]: res.content }));
