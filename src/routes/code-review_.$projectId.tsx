@@ -286,9 +286,22 @@ function CodeReviewProject() {
         if (firstKey) setActiveFile({ path: firstKey, lang: samples[firstKey].lang, content: samples[firstKey].content });
 
         const reviews: any[] = Array.isArray(reviewsData.data) ? reviewsData.data : [];
-        // Latest completed review, or latest of any status
-        const completed = reviews.find((rv) => rv.status === "completed");
-        setReviewData(completed ?? reviews[0] ?? null);
+        // A review still running on the server? Re-attach to it instead of
+        // starting a new one — reviews keep running when the window closes.
+        const TEN_MIN = 10 * 60 * 1000;
+        const running = reviews.find((rv) =>
+          (rv.status === "running" || rv.status === "queued") &&
+          Date.now() - new Date(rv.started_at ?? rv.created_at).getTime() < TEN_MIN
+        );
+        if (running) {
+          autoStarted.current = true;
+          setReviewData(running);
+          setIsReviewing(true);
+          startPolling(running.id);
+        } else {
+          const completed = reviews.find((rv) => rv.status === "completed");
+          setReviewData(completed ?? reviews[0] ?? null);
+        }
       } catch (err) {
         console.error(err);
         toast.error("Failed to load project");
