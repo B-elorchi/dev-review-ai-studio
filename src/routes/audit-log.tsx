@@ -12,16 +12,9 @@ export const Route = createFileRoute("/audit-log")({
   component: AuditPage,
 });
 
-const events = [
-  { time: "2026-06-03 14:22:11", actor: "jane@acme.dev", action: "api_key.created", target: "drv_live_8aF2…", ip: "203.0.113.42", level: "info" },
-  { time: "2026-06-03 13:51:04", actor: "marcus@acme.dev", action: "member.role_changed", target: "aisha@acme.dev → Admin", ip: "198.51.100.7", level: "warn" },
-  { time: "2026-06-03 12:08:55", actor: "system", action: "review.completed", target: "acme/web#142", ip: "—", level: "info" },
-  { time: "2026-06-03 11:47:32", actor: "jane@acme.dev", action: "integration.connected", target: "GitHub (acme org)", ip: "203.0.113.42", level: "info" },
-  { time: "2026-06-03 09:12:09", actor: "sam@acme.dev", action: "auth.login", target: "web", ip: "192.0.2.18", level: "info" },
-  { time: "2026-06-02 22:34:17", actor: "system", action: "billing.invoice_paid", target: "INV-2026-006 — $29.00", ip: "—", level: "info" },
-  { time: "2026-06-02 18:01:42", actor: "marcus@acme.dev", action: "auth.failed_login", target: "web", ip: "45.33.12.9", level: "error" },
-  { time: "2026-06-02 16:55:03", actor: "jane@acme.dev", action: "settings.updated", target: "Notifications", ip: "203.0.113.42", level: "info" },
-];
+import { useEffect, useState } from "react";
+import { fetchApi } from "@/lib/api/client";
+import { useAuthStore } from "@/lib/auth-store";
 
 const levelCls: Record<string, string> = {
   info: "border-border bg-muted/30 text-muted-foreground",
@@ -30,6 +23,19 @@ const levelCls: Record<string, string> = {
 };
 
 function AuditPage() {
+  const { workspaceId } = useAuthStore();
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    setLoading(true);
+    fetchApi("/audit-log", {}, workspaceId)
+      .then((d) => setEvents(d.events ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [workspaceId]);
+
   return (
     <div>
       <PageHeader
@@ -70,16 +76,27 @@ function AuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {events.map((e, i) => (
-                <TableRow key={i}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{e.time}</TableCell>
-                  <TableCell className="text-sm">{e.actor}</TableCell>
-                  <TableCell><code className="rounded bg-muted/40 px-1.5 py-0.5 font-mono text-[11px]">{e.action}</code></TableCell>
-                  <TableCell className="text-sm">{e.target}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{e.ip}</TableCell>
-                  <TableCell><Badge variant="outline" className={levelCls[e.level]}>{e.level}</Badge></TableCell>
+              {events.length === 0 && !loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No audit logs found.
+                  </TableCell>
                 </TableRow>
-              ))}
+              )}
+              {events.map((e, i) => {
+                const ts = e.created_at ? new Date(e.created_at).toLocaleString() : e.time;
+                const lvl = e.level || "info";
+                return (
+                  <TableRow key={e.id || i}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{ts}</TableCell>
+                    <TableCell className="text-sm">{e.actor_email || e.actor_id || e.actor}</TableCell>
+                    <TableCell><code className="rounded bg-muted/40 px-1.5 py-0.5 font-mono text-[11px]">{e.action}</code></TableCell>
+                    <TableCell className="text-sm">{e.target}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{e.ip_address || e.ip || "—"}</TableCell>
+                    <TableCell><Badge variant="outline" className={levelCls[lvl] || levelCls.info}>{lvl}</Badge></TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </Card>
