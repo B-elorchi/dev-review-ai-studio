@@ -487,7 +487,9 @@ function CodeReviewProject() {
                   </defs>
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="font-display text-sm font-bold gradient-text">{score || "—"}</span>
+                  <span className="font-display text-sm font-bold gradient-text">
+                    {reviewData?.status === "completed" ? score : "—"}
+                  </span>
                 </div>
               </div>
               <div>
