@@ -32,6 +32,7 @@ const sevConfig = {
 // ─── Live review progress (per-file) ─────────────────────────────────────────
 
 type FileProgress = { path: string; status: "pending" | "reviewing" | "done"; findings: number };
+type LiveFinding = { file_path: string; line?: number; severity: string; title: string; suggestion: string };
 type Progress = {
   status: "running" | "completed" | "failed";
   files_total: number;
@@ -39,6 +40,7 @@ type Progress = {
   current_file: string | null;
   findings_count: number;
   files: FileProgress[];
+  recent_findings?: LiveFinding[];
 };
 
 function LiveProgress({ progress, projectName }: { progress: Progress | null; projectName: string }) {
@@ -223,14 +225,18 @@ function FindingCard({ f, onJump }: { f: any; onJump?: (path: string) => void })
               💡 {f.suggestion}
             </p>
           )}
-          {onJump && f.file_path && (
+          {onJump && f.file_path ? (
             <button
               onClick={() => onJump(f.file_path)}
               className="mt-1.5 font-mono text-[10px] text-primary hover:underline"
             >
               {f.file_path}{f.line ? `:${f.line}` : ""}
             </button>
-          )}
+          ) : f.file_path ? (
+            <p className="mt-1.5 truncate font-mono text-[10px] text-muted-foreground">
+              {f.file_path}{f.line ? `:${f.line}` : ""}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -425,11 +431,38 @@ function CodeReviewProject() {
         }
       />
 
-      {/* ── Live review progress ─────────────────────────────────────────── */}
+      {/* ── Live review progress + live findings sidebar ─────────────────── */}
       {isReviewing && (
-        <div className="mx-6 mb-6">
+        <div className="mx-6 mb-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
           <Card className="glass overflow-hidden p-0">
             <LiveProgress progress={progress} projectName={project?.name ?? "Project"} />
+          </Card>
+
+          {/* Right sidebar — findings appear here as the AI discovers them */}
+          <Card className="glass flex max-h-[560px] flex-col overflow-hidden p-0">
+            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Bug className="h-3.5 w-3.5" /> Live findings
+              </span>
+              {(progress?.findings_count ?? 0) > 0 && (
+                <Badge variant="outline" className="border-amber-500/40 text-amber-400 text-[10px]">
+                  {progress!.findings_count}
+                </Badge>
+              )}
+            </div>
+            <div className="flex-1 space-y-2 overflow-y-auto p-3">
+              {(progress?.recent_findings ?? []).length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary/60" />
+                  <p className="text-xs">Findings and advice will appear here live as each file is analysed…</p>
+                </div>
+              )}
+              {(progress?.recent_findings ?? []).map((f, i) => (
+                <div key={`${f.file_path}-${f.line ?? 0}-${i}`} className="animate-in fade-in slide-in-from-top-1 duration-300">
+                  <FindingCard f={f} />
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       )}
