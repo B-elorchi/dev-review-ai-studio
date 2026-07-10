@@ -258,7 +258,7 @@ function CodeReviewProject() {
   const [loading,     setLoading]     = useState(true);
   const [isReviewing, setIsReviewing] = useState(false);
   const [progress,    setProgress]    = useState<Progress | null>(null);
-  const [showAllFindings, setShowAllFindings] = useState(false);
+  const [showAllFindings, setShowAllFindings] = useState(true);
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStarted = useRef(false);
 
@@ -343,7 +343,6 @@ function CodeReviewProject() {
   // ── Open file (lazy-load content when not pre-fetched) ───────────────────
 
   const openFile = async (path: string, lang: string, content: string) => {
-    setShowAllFindings(false);
     if (content) { setActiveFile({ path, lang, content }); return; }
     setActiveFile({ path, lang, content: "// Loading…" });
     try {
