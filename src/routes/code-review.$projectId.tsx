@@ -173,7 +173,7 @@ function CodeReviewProject() {
   }
 
   const triggerReview = async () => {
-    if (!projectId || !workspaceId) return;
+    if (!projectId) return;
     setTriggering(true);
     try {
       const diffParts = Object.entries(sampleFiles).map(
